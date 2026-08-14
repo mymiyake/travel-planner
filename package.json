@@ -1,0 +1,14 @@
+{
+  "name": "koreaconnect-travel-app",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "proj4": "^2.11.0"
+  }
+}

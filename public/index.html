@@ -30,8 +30,15 @@
   .summary{display:flex;gap:8px;margin:10px 0}
   .summary .box{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center}
   .summary .box b{display:block;font-size:15px}.summary .box span{font-size:10px;color:var(--muted)}
-  .navbtns{display:flex;gap:6px;margin:8px 0}
-  .navbtns button{flex:1;padding:8px 4px;font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);cursor:pointer}
+  .navbtns{display:flex;gap:6px;margin:0}
+  .navbtns button{flex:1;padding:9px 4px;font-size:11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);cursor:pointer}
+  /* 플로팅 내비 바 */
+  #navBox{position:fixed;bottom:0;left:0;width:400px;z-index:40;background:rgba(15,17,21,.94);backdrop-filter:blur(8px);border-top:1px solid var(--line);border-right:1px solid var(--line);padding:8px 12px 10px;box-shadow:0 -4px 16px rgba(0,0,0,.35)}
+  @media (max-width:860px){#navBox{width:100%}}
+  #navBox #navHint{font-size:11px;color:var(--muted);margin-bottom:6px}
+  #navPrimaryWrap{display:flex;gap:6px}
+  #navPrimary{flex:1;padding:11px;background:var(--accent);color:#fff;border:0;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer}
+  #navMore{width:44px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;cursor:pointer;font-size:14px}
   /* 섹션 아코디언 */
   .sec{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--panel2)}
   .sec>.sh{display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;font-weight:700;font-size:13px;user-select:none}
@@ -83,6 +90,11 @@
   details.keys{margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
   details.keys summary{cursor:pointer;font-size:12px;color:var(--muted)}
   select.mini{width:100%;padding:7px;background:var(--panel);border:1px solid var(--line);border-radius:7px;color:var(--text);font-size:11.5px;margin-bottom:6px}
+  .setlabel{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px}
+  .dpgroup{margin-bottom:8px}
+  .dphead{font-size:10px;color:var(--muted);margin:4px 0 3px}
+  .dpick{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 8px;margin:0 5px 5px 0;cursor:pointer}
+  .dpick input{margin:0}
 </style>
 </head>
 <body>
@@ -119,13 +131,6 @@
         <div class="box"><b id="sumTime">–</b><span id="sumTimeL">시간</span></div>
         <div class="box"><b id="sumGas">–</b><span id="sumGasL">최저가</span></div>
       </div>
-      <div id="navBox" style="display:none">
-        <div id="navHint" class="sub" style="margin:6px 0 2px">🧭 목적지로 안내</div>
-        <div class="navbtns" id="navRow">
-          <button data-nav="kakaomap">카카오맵</button><button data-nav="kakaonavi">카카오내비</button><button data-nav="tmap">티맵</button><button data-nav="naver">네이버지도</button>
-        </div>
-      </div>
-
       <div class="dash" id="dash" style="display:none">
         <div class="dh" id="dashLabel">⭐ 내 대시보드 <small>메뉴에서 ⭐를 눌러 추가</small></div>
         <div id="dashBody"></div>
@@ -133,17 +138,38 @@
 
       <div id="menu"></div>
 
-      <details class="keys">
-        <summary>⚙️ 카카오 키 설정</summary>
-        <div class="field" style="margin-top:10px"><label>카카오 JavaScript 키</label><input id="k_kakao_js" placeholder="지도 표시용" /></div>
-        <button class="primary" id="saveKeys">저장 & 지도 로드</button>
+      <details class="keys" id="settings">
+        <summary data-i18n="settings">⚙️ 설정 (대시보드·내비·지도)</summary>
+        <div style="margin-top:10px">
+          <div class="setlabel" data-i18n="dashPick">⭐ 내 대시보드에 올릴 기능</div>
+          <div id="dashPicker"></div>
+          <div class="setlabel" style="margin-top:12px" data-i18n="prefNav">🧭 기본 내비 앱</div>
+          <select id="prefNav" class="mini">
+            <option value="">매번 선택 (버튼 여러 개)</option>
+            <option value="kakaomap">카카오맵</option><option value="kakaonavi">카카오내비</option><option value="tmap">티맵</option><option value="naver">네이버지도</option><option value="googlemap">구글맵</option>
+          </select>
+          <div class="setlabel" style="margin-top:12px" data-i18n="mapKeys">🗺️ 지도 키</div>
+          <div class="field"><label>Google Maps JS 키 (다국어 지도, 결제 필요)</label><input id="k_gmap_js" placeholder="AIza… (넣으면 구글 다국어 지도)" /></div>
+          <div class="field"><label>카카오 JavaScript 키 (폴백)</label><input id="k_kakao_js" placeholder="구글 키 없을 때 사용" /></div>
+          <button class="primary" id="saveKeys">저장 & 지도 로드</button>
+        </div>
       </details>
+      <div style="height:80px"></div>
     </div>
   </aside>
   <main>
     <button id="mapToggle" style="position:absolute;right:8px;top:8px;z-index:5;padding:5px 9px;font-size:11px;background:rgba(23,26,33,.9);color:#e8ecf3;border:1px solid #2a2f3a;border-radius:7px;cursor:pointer">⤢ 지도</button>
-    <div id="map"><div id="mapFallback">🗺️ 카카오 지도<br><span style="font-size:12px">⚙️에서 카카오 JavaScript 키를 넣으면 지도·경로가 표시됩니다.</span></div></div>
+    <div id="map"><div id="mapFallback">🗺️ 지도<br><span style="font-size:12px">⚙️에서 Google Maps 키(다국어) 또는 카카오 키를 넣으면 지도가 표시됩니다.</span></div></div>
   </main>
+</div>
+<div id="navBox" style="display:none">
+  <div id="navHint">🧭 목적지로 안내</div>
+  <div class="navbtns" id="navRow">
+    <button data-nav="kakaomap">카카오맵</button><button data-nav="kakaonavi">카카오내비</button><button data-nav="tmap">티맵</button><button data-nav="naver">네이버지도</button>
+  </div>
+  <div id="navPrimaryWrap" style="display:none">
+    <button id="navPrimary">🧭 안내</button><button id="navMore" title="다른 앱">▾</button>
+  </div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
@@ -248,6 +274,7 @@ function bindMenu(){
     e.stopPropagation();const id=s.dataset.star;
     if(pins.includes(id))pins=pins.filter(x=>x!==id);else pins.push(id);
     store.set('pins',JSON.stringify(pins));s.classList.toggle('on');renderDash();
+    const cb=document.querySelector(`#dashPicker input[data-dp="${id}"]`);if(cb)cb.checked=pins.includes(id);
   });
 }
 /* ---------- 대시보드(커스텀 프론트) ---------- */
@@ -261,21 +288,52 @@ function renderDash(){
   }).join('');
   pins.forEach(id=>renderFeat(id,'dash-'+id));
 }
+function buildDashPicker(){
+  const el=$('#dashPicker');if(!el)return;
+  el.innerHTML=SECTIONS.map(s=>{
+    const items=s.feats.filter(f=>f.ok).map(f=>`<label class="dpick"><input type="checkbox" data-dp="${f.id}" ${pins.includes(f.id)?'checked':''}>${tr(f.id)}</label>`).join('');
+    return items?`<div class="dpgroup"><div class="dphead">${tr('s_'+s.id)}</div>${items}</div>`:'';
+  }).join('');
+  el.querySelectorAll('input[data-dp]').forEach(cb=>cb.onchange=()=>{
+    const id=cb.dataset.dp;
+    if(cb.checked){if(!pins.includes(id))pins.push(id);}else pins=pins.filter(x=>x!==id);
+    store.set('pins',JSON.stringify(pins));renderDash();
+    const star=document.querySelector(`.star[data-star="${id}"]`);if(star)star.classList.toggle('on',cb.checked);
+  });
+}
 
-/* ---------- 카카오 지도 ---------- */
+/* ---------- 지도 엔진: 구글(다국어) 우선, 없으면 카카오(한글) 폴백 ---------- */
 const DEFAULT_KAKAO_JS='498e6c86aec0d186027a9ab6c9d9e29c';
+let mapEngine=null;
 if(!store.get('kakao_js'))store.set('kakao_js',DEFAULT_KAKAO_JS);
 $('#k_kakao_js').value=store.get('kakao_js');
-$('#saveKeys').onclick=()=>{store.set('kakao_js',$('#k_kakao_js').value.trim());loadKakao();};
-function loadKakao(){
-  const key=store.get('kakao_js');if(!key)return setStatus('카카오 JS 키 없음');
-  if(window.kakao?.maps)return initMap();
+$('#k_gmap_js').value=store.get('gmap_js');
+$('#saveKeys').onclick=()=>{store.set('gmap_js',$('#k_gmap_js').value.trim());store.set('kakao_js',$('#k_kakao_js').value.trim());mapEngine=null;map=null;loadMap();};
+function loadMap(){
+  const g=store.get('gmap_js');
+  if(g){loadGoogle(g);return;}
+  const k=store.get('kakao_js');
+  if(k){loadKakao(k);return;}
+  setStatus('지도 키 없음 — 데이터/내비는 동작');
+}
+function loadGoogle(key){
+  if(window.google?.maps){initGoogle();return;}
+  const s=document.createElement('script');
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&language=${curLang}&region=KR&callback=__initGoogle`;
+  s.onerror=()=>setStatus('⚠️ 구글 지도 로드 실패 — 키/결제 확인');
+  document.head.appendChild(s);
+}
+window.__initGoogle=function(){mapEngine='google';$('#map').innerHTML='';
+  map=new google.maps.Map($('#map'),{center:{lat:36.5,lng:127.8},zoom:7,mapTypeControl:false,streetViewControl:false,fullscreenControl:false});
+  setStatus('지도 준비 완료 ✅ (구글·다국어)');};
+function loadKakao(key){
+  if(window.kakao?.maps)return initKakao();
   const s=document.createElement('script');
   s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
-  s.onerror=()=>setStatus('⚠️ 지도 로드 실패 — 키/도메인 확인');
-  s.onload=()=>kakao.maps.load(initMap);document.head.appendChild(s);
+  s.onerror=()=>setStatus('⚠️ 카카오 지도 로드 실패 — 키/도메인 확인');
+  s.onload=()=>kakao.maps.load(initKakao);document.head.appendChild(s);
 }
-function initMap(){$('#map').innerHTML='';map=new kakao.maps.Map($('#map'),{center:new kakao.maps.LatLng(36.5,127.8),level:13});setStatus('지도 준비 완료 ✅');}
+function initKakao(){mapEngine='kakao';$('#map').innerHTML='';map=new kakao.maps.Map($('#map'),{center:new kakao.maps.LatLng(36.5,127.8),level:13});setStatus('지도 준비 완료 ✅');}
 
 /* ---------- 검색 실행 ---------- */
 $('#go').onclick=run;
@@ -287,7 +345,7 @@ async function run(){
   let o=$('#origin').value.trim();
   const destVals=[...document.querySelectorAll('.dest')].map(i=>i.value.trim()).filter(Boolean);
   if(!destVals.length)return setStatus(t('needDest'));
-  $('#go').disabled=true;clearMap();setStatus(t('calc'));
+  $('#go').disabled=true;$('#go').textContent='🔍 '+t('searching');clearMap();setStatus('🔍 '+t('searching'));
   try{
     let O;
     if(o){O=await geocode(o);} else {O=await currentPos();if(!O)throw new Error(t('noGeo'));o=t('here');$('#origin').placeholder=t('here');}
@@ -305,7 +363,7 @@ async function run(){
       const D=Ds[0];destLatLng={lat:D.lat,lng:D.lng};window.destAddr=D.addr||D.q;window.destName=D.q;window.__order=null;
       await route(O,D);
     }
-    setStatus('전체 정보 조회 중…');
+    setStatus('🔍 '+t('searching2'));
     // 사용가능한 모든 기능 로드
     const jobs=[loadGas()];
     SECTIONS.forEach(s=>s.feats.forEach(f=>{ if(f.ok&&f.kind==='tour')jobs.push(loadTour(f.id,f.ctid)); }));
@@ -317,7 +375,7 @@ async function run(){
     renderDash();
     setStatus(window.__order?('🧭 '+window.__order):t('done'));
   }catch(e){console.error(e);setStatus('⚠️ '+e.message);}
-  $('#go').disabled=false;
+  $('#go').disabled=false;$('#go').textContent=t('go');
 }
 async function geocode(q){const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'주소검색 실패');}return r.json();}
 async function route(o,d){
@@ -438,28 +496,52 @@ function loadAirport(sel){
     out.innerHTML=`평균 대기 <span class="big" style="color:${busy}">${a.avgWait}분</span><div class="gate-grid">`+a.gates.map(g=>`<span class="gate">${g.gate} ${g.waitTime}분</span>`).join('')+`</div>`;});
 }
 /* ---------- 지도/내비/유틸 ---------- */
-function drawRoute(){if(!map||!routePath.length)return;const pts=routePath.map(p=>new kakao.maps.LatLng(p.lat,p.lng));
-  routeLine=new kakao.maps.Polyline({path:pts,strokeWeight:5,strokeColor:'#4f8cff',strokeOpacity:.9});routeLine.setMap(map);
-  const b=new kakao.maps.LatLngBounds();pts.forEach(p=>b.extend(p));map.setBounds(b);}
+function drawRoute(){if(!map||!routePath.length)return;
+  if(mapEngine==='google'){
+    routeLine=new google.maps.Polyline({path:routePath.map(p=>({lat:p.lat,lng:p.lng})),strokeColor:'#4f8cff',strokeWeight:5,strokeOpacity:.9});routeLine.setMap(map);
+    const b=new google.maps.LatLngBounds();routePath.forEach(p=>b.extend({lat:p.lat,lng:p.lng}));map.fitBounds(b);
+  }else if(mapEngine==='kakao'){
+    const pts=routePath.map(p=>new kakao.maps.LatLng(p.lat,p.lng));
+    routeLine=new kakao.maps.Polyline({path:pts,strokeWeight:5,strokeColor:'#4f8cff',strokeOpacity:.9});routeLine.setMap(map);
+    const b=new kakao.maps.LatLngBounds();pts.forEach(p=>b.extend(p));map.setBounds(b);
+  }}
 function focusOn(lat,lng,name,addr){if(!lat)return;
   window.navTarget={lat,lng,name,addr:addr||name};
-  const nr=$('#navHint');if(nr)nr.textContent='🧭 '+name+' '+t('navTo');
-  if(map){const pos=new kakao.maps.LatLng(lat,lng);map.panTo(pos);map.setLevel(5);
-  const m=new kakao.maps.Marker({position:pos,map});markers.push(m);new kakao.maps.InfoWindow({content:`<div style="padding:4px 8px;font-size:12px">${name}</div>`}).open(map,m);}else setStatus(`${name} · ${lat}, ${lng}`);}
-function clearMap(){if(routeLine)routeLine.setMap(null);markers.forEach(m=>m.setMap(null));markers=[];wxCache=null;}
-document.querySelectorAll('#navRow button').forEach(b=>b.onclick=async()=>{
+  const nr=$('#navHint');if(nr)nr.textContent='🧭 '+name+' '+t('navTo');updateNavPrimaryLabel();
+  if(!map){setStatus(`${name} · ${lat}, ${lng}`);return;}
+  if(mapEngine==='google'){map.panTo({lat,lng});map.setZoom(14);
+    const m=new google.maps.Marker({position:{lat,lng},map,title:name});markers.push(m);
+    const iw=new google.maps.InfoWindow({content:`<div style="padding:2px 6px;font-size:12px;color:#111">${name}</div>`});iw.open(map,m);markers.push({setMap:()=>iw.close()});
+  }else if(mapEngine==='kakao'){const pos=new kakao.maps.LatLng(lat,lng);map.panTo(pos);map.setLevel(5);
+    const m=new kakao.maps.Marker({position:pos,map});markers.push(m);new kakao.maps.InfoWindow({content:`<div style="padding:4px 8px;font-size:12px">${name}</div>`}).open(map,m);}}
+function clearMap(){if(routeLine)routeLine.setMap(null);markers.forEach(m=>m.setMap&&m.setMap(null));markers=[];wxCache=null;}
+const NAV_NAMES={kakaomap:'카카오맵',kakaonavi:'카카오내비',tmap:'티맵',naver:'네이버지도',googlemap:'구글맵'};
+async function navTo(kind){
   const tgt=window.navTarget||(destLatLng&&{lat:destLatLng.lat,lng:destLatLng.lng,name:window.destName||'목적지'});
   if(!tgt)return setStatus(t('navNeedTarget'));
-  let s=originLatLng;
-  if(!s){s=await currentPos();if(s)originLatLng=s;}
+  let s=originLatLng;if(!s){s=await currentPos();if(s)originLatLng=s;}
   const lat=tgt.lat,lng=tgt.lng,name=encodeURIComponent(tgt.name||'목적지');
-  const urls={kakaomap:`https://map.kakao.com/link/to/${name},${lat},${lng}`,
+  const so=s&&s.lat?`&saddr=${s.lat},${s.lng}`:'';
+  const urls={
+    kakaomap:`https://map.kakao.com/link/to/${name},${lat},${lng}`,
     kakaonavi:`kakaonavi://navigate?name=${name}&coord_type=wgs84&x=${lng}&y=${lat}`,
     tmap:`tmap://route?goalname=${name}&goalx=${lng}&goaly=${lat}`,
-    naver:`nmap://route/car?dlat=${lat}&dlng=${lng}&dname=${name}&appname=com.travelplanner${s&&s.lat?`&slat=${s.lat}&slng=${s.lng}&sname=${encodeURIComponent(window.originName||t('here'))}`:''}`};
-  const k=b.dataset.nav;if(k==='kakaomap')return window.open(urls[k],'_blank');
-  window.location.href=urls[k];setTimeout(()=>setStatus('📱 '+t('navMobile')),900);
-});
+    naver:`nmap://route/car?dlat=${lat}&dlng=${lng}&dname=${name}&appname=com.travelplanner${s&&s.lat?`&slat=${s.lat}&slng=${s.lng}&sname=${encodeURIComponent(window.originName||t('here'))}`:''}`,
+    googlemap:`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving${s&&s.lat?`&origin=${s.lat},${s.lng}`:''}`};
+  if(kind==='kakaomap'||kind==='googlemap')return window.open(urls[kind],'_blank');
+  window.location.href=urls[kind];setTimeout(()=>setStatus('📱 '+t('navMobile')),900);
+}
+document.querySelectorAll('#navRow button').forEach(b=>b.onclick=()=>navTo(b.dataset.nav));
+$('#navPrimary').onclick=()=>navTo(store.get('prefNav')||'kakaomap');
+$('#navMore').onclick=()=>{$('#navRow').style.display=$('#navRow').style.display==='none'?'flex':'none';};
+$('#prefNav').value=store.get('prefNav');
+$('#prefNav').onchange=e=>{store.set('prefNav',e.target.value);applyPref();};
+function applyPref(){const p=store.get('prefNav');
+  if(p){$('#navRow').style.display='none';$('#navPrimaryWrap').style.display='flex';updateNavPrimaryLabel();}
+  else{$('#navRow').style.display='flex';$('#navPrimaryWrap').style.display='none';}}
+function updateNavPrimaryLabel(){const p=store.get('prefNav');if(!p)return;
+  const nm=window.navTarget?.name||window.destName||t('navDefault');
+  $('#navPrimary').textContent='🧭 '+nm+' → '+(NAV_NAMES[p]||p);}
 function sample(p,n){if(p.length<=n)return p;const s=(p.length-1)/(n-1);return Array.from({length:n},(_,i)=>p[Math.round(i*s)]);}
 function brand(c){return({SKE:'SK에너지',GSC:'GS칼텍스',HDO:'현대오일뱅크',SOL:'S-OIL',RTE:'자영알뜰',RTX:'고속도로알뜰',NHO:'농협알뜰',ETC:'자가상표',E1G:'E1',SKG:'SK가스'})[c]||c||'';}
 function esc(s){return(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
@@ -511,10 +593,10 @@ const T={
    camping:'露营地',trail:'环山步道',pet:'宠物同行',barrier:'无障碍旅行',market:'传统市场',
    airport:'机场拥堵·大巴',toilet:'公厕',pharm:'药店',er:'急诊床位',shelter:'避难所',fx:'汇率',duty:'免税店'}
 };
-Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터'});
-Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots'});
-Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場'});
-Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点'});
+Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (대시보드·내비·지도)',dashPick:'⭐ 내 대시보드에 올릴 기능',mapKeys:'🗺️ 지도 키'});
+Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (dashboard·nav·map)',dashPick:'⭐ Pin to my dashboard',mapKeys:'🗺️ Map keys'});
+Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（ダッシュボード·ナビ·地図）',dashPick:'⭐ ダッシュボードに追加',mapKeys:'🗺️ 地図キー'});
+Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（仪表板·导航·地图）',dashPick:'⭐ 添加到仪表板',mapKeys:'🗺️ 地图密钥'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);
@@ -527,13 +609,13 @@ function applyI18n(){
   $('#go').textContent=tr('go');
   $('#dashLabel').innerHTML=tr('myDash')+' <small>'+tr('dashHint')+'</small>';
   $('#sumDistL').textContent=tr('dist');$('#sumTimeL').textContent=tr('time');$('#sumGasL').textContent=tr('cheap');
-  buildMenu();renderDash();
+  buildMenu();renderDash();buildDashPicker();
 }
 $('#lang').onchange=e=>{curLang=e.target.value;store.set('lang',curLang);applyI18n();};
 $('#addDest').onclick=()=>{const i=document.createElement('input');i.className='dest';i.placeholder=tr('destPh');i.style.marginBottom='6px';$('#dests').appendChild(i);};
-$('#mapToggle').onclick=()=>{document.querySelector('main').classList.toggle('big');setTimeout(()=>{if(map)map.relayout();},250);};
+$('#mapToggle').onclick=()=>{document.querySelector('main').classList.toggle('big');setTimeout(()=>{if(!map)return;if(mapEngine==='kakao')map.relayout();else if(mapEngine==='google')google.maps.event.trigger(map,'resize');},250);};
 
-buildMenu();renderDash();loadKakao();applyI18n();
+buildMenu();renderDash();loadMap();applyI18n();applyPref();
 </script>
 </body>
 </html>

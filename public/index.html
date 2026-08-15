@@ -325,7 +325,8 @@ function loadGoogle(key){
 }
 window.__initGoogle=function(){mapEngine='google';$('#map').innerHTML='';
   map=new google.maps.Map($('#map'),{center:{lat:36.5,lng:127.8},zoom:7,mapTypeControl:false,streetViewControl:false,fullscreenControl:false});
-  setStatus('지도 준비 완료 ✅ (구글·다국어)');};
+  setStatus('지도 준비 완료 ✅ (구글·다국어)');
+  if(window.__autorun){window.__autorun=false;setTimeout(run,300);}};
 function loadKakao(key){
   if(window.kakao?.maps)return initKakao();
   const s=document.createElement('script');
@@ -333,7 +334,7 @@ function loadKakao(key){
   s.onerror=()=>setStatus('⚠️ 카카오 지도 로드 실패 — 키/도메인 확인');
   s.onload=()=>kakao.maps.load(initKakao);document.head.appendChild(s);
 }
-function initKakao(){mapEngine='kakao';$('#map').innerHTML='';map=new kakao.maps.Map($('#map'),{center:new kakao.maps.LatLng(36.5,127.8),level:13});setStatus('지도 준비 완료 ✅');}
+function initKakao(){mapEngine='kakao';$('#map').innerHTML='';map=new kakao.maps.Map($('#map'),{center:new kakao.maps.LatLng(36.5,127.8),level:13});setStatus('지도 준비 완료 ✅');if(window.__autorun){window.__autorun=false;setTimeout(run,300);}}
 
 /* ---------- 검색 실행 ---------- */
 $('#go').onclick=run;
@@ -611,11 +612,26 @@ function applyI18n(){
   $('#sumDistL').textContent=tr('dist');$('#sumTimeL').textContent=tr('time');$('#sumGasL').textContent=tr('cheap');
   buildMenu();renderDash();buildDashPicker();
 }
-$('#lang').onchange=e=>{curLang=e.target.value;store.set('lang',curLang);applyI18n();};
+$('#lang').onchange=e=>{
+  curLang=e.target.value;store.set('lang',curLang);
+  // 구글 지도는 라벨 언어가 스크립트 로드시 고정 → 검색상태 보존하며 새로고침
+  if(mapEngine==='google'&&window.google?.maps){
+    if(searched)store.set('pendingRun',JSON.stringify({origin:$('#origin').value,dests:[...document.querySelectorAll('.dest')].map(i=>i.value)}));
+    location.reload();return;
+  }
+  applyI18n();
+};
 $('#addDest').onclick=()=>{const i=document.createElement('input');i.className='dest';i.placeholder=tr('destPh');i.style.marginBottom='6px';$('#dests').appendChild(i);};
 $('#mapToggle').onclick=()=>{document.querySelector('main').classList.toggle('big');setTimeout(()=>{if(!map)return;if(mapEngine==='kakao')map.relayout();else if(mapEngine==='google')google.maps.event.trigger(map,'resize');},250);};
 
 buildMenu();renderDash();loadMap();applyI18n();applyPref();
+// 언어 변경 새로고침 후 검색값 복원 → 지도 준비되면 자동 재검색
+(function(){const pr=store.get('pendingRun');if(!pr)return;store.set('pendingRun','');
+  try{const d=JSON.parse(pr);$('#origin').value=d.origin||'';
+    (d.dests||[]).forEach((v,i)=>{if(i>0)$('#addDest').click();});
+    [...document.querySelectorAll('.dest')].forEach((el,i)=>el.value=(d.dests||[])[i]||'');
+    window.__autorun=true;
+  }catch(e){}})();
 </script>
 </body>
 </html>

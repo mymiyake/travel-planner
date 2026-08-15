@@ -83,7 +83,9 @@
   .dash .dh{font-size:12px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px}
   .dash .dh small{margin-left:auto;color:var(--muted);font-weight:400;font-size:10px}
   .dwrap{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:7px;background:var(--panel2)}
-  .dwrap .dt{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:5px}
+  .dwrap .dt{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+  .dxoff{color:var(--muted);cursor:pointer;font-weight:400;font-size:12px;padding:0 4px}
+  .dxoff:hover{color:var(--danger)}
   main{position:relative}
   #map{width:100%;height:100%}
   #mapFallback{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);flex-direction:column;gap:10px;text-align:center;padding:30px}
@@ -131,12 +133,12 @@
         <div class="box"><b id="sumTime">–</b><span id="sumTimeL">시간</span></div>
         <div class="box"><b id="sumGas">–</b><span id="sumGasL">최저가</span></div>
       </div>
-      <div class="dash" id="dash" style="display:none">
-        <div class="dh" id="dashLabel">⭐ 내 대시보드 <small>메뉴에서 ⭐를 눌러 추가</small></div>
+      <div class="dash" id="dash">
+        <div class="dh" id="dashLabel">🧳 내 여행 정보</div>
         <div id="dashBody"></div>
       </div>
 
-      <div id="menu"></div>
+      <div id="menu" style="display:none"></div>
 
       <details class="keys" id="settings">
         <summary data-i18n="settings">⚙️ 설정 (대시보드·내비·지도)</summary>
@@ -279,14 +281,14 @@ function bindMenu(){
 }
 /* ---------- 대시보드(커스텀 프론트) ---------- */
 function renderDash(){
-  const d=$('#dash');
-  if(!pins.length){d.style.display='none';return;}
-  d.style.display='block';
-  $('#dashBody').innerHTML=pins.map(id=>{
+  const body=$('#dashBody');
+  if(!pins.length){body.innerHTML=`<div class="empty" style="padding:18px 10px;line-height:1.7">${t('emptyDash').replace(/\\n|\n/g,'<br>')}</div>`;return;}
+  body.innerHTML=pins.map(id=>{
     const f=FEAT[id];if(!f)return '';
-    return `<div class="dwrap"><div class="dt">${tr(id)}</div><div id="dash-${id}"></div></div>`;
+    return `<div class="dwrap"><div class="dt">${tr(id)} <span class="dxoff" data-off="${id}" title="숨기기">✕</span></div><div id="dash-${id}"></div></div>`;
   }).join('');
   pins.forEach(id=>renderFeat(id,'dash-'+id));
+  body.querySelectorAll('.dxoff').forEach(x=>x.onclick=()=>{const id=x.dataset.off;pins=pins.filter(v=>v!==id);store.set('pins',JSON.stringify(pins));renderDash();const cb=document.querySelector(`#dashPicker input[data-dp="${id}"]`);if(cb)cb.checked=false;});
 }
 function buildDashPicker(){
   const el=$('#dashPicker');if(!el)return;
@@ -594,10 +596,10 @@ const T={
    camping:'露营地',trail:'环山步道',pet:'宠物同行',barrier:'无障碍旅行',market:'传统市场',
    airport:'机场拥堵·大巴',toilet:'公厕',pharm:'药店',er:'急诊床位',shelter:'避难所',fx:'汇率',duty:'免税店'}
 };
-Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (대시보드·내비·지도)',dashPick:'⭐ 내 대시보드에 올릴 기능',mapKeys:'🗺️ 지도 키'});
-Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (dashboard·nav·map)',dashPick:'⭐ Pin to my dashboard',mapKeys:'🗺️ Map keys'});
-Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（ダッシュボード·ナビ·地図）',dashPick:'⭐ ダッシュボードに追加',mapKeys:'🗺️ 地図キー'});
-Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（仪表板·导航·地图）',dashPick:'⭐ 添加到仪表板',mapKeys:'🗺️ 地图密钥'});
+Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
+Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
+Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
+Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);
@@ -608,7 +610,7 @@ function applyI18n(){
   document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=tr(e.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(e=>e.placeholder=tr(e.dataset.i18nPh));
   $('#go').textContent=tr('go');
-  $('#dashLabel').innerHTML=tr('myDash')+' <small>'+tr('dashHint')+'</small>';
+  $('#dashLabel').innerHTML=tr('myTrip')+' <small>'+tr('dashHint')+'</small>';
   $('#sumDistL').textContent=tr('dist');$('#sumTimeL').textContent=tr('time');$('#sumGasL').textContent=tr('cheap');
   buildMenu();renderDash();buildDashPicker();
 }

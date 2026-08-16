@@ -487,6 +487,29 @@ app.get('/api/er', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 둘레길 (두루누비 코스 — 지역명 매칭)
+let trailCache = null, trailAt = 0;
+app.get('/api/trail', async (req, res) => {
+  try {
+    const region = (req.query.region || '').trim();
+    if (!trailCache || Date.now() - trailAt > 12 * 3600e3) {
+      const j = await fetchJsonRetry(`https://api.koreaconnect.kr/01/1/2603101713597416530PDP/CULTR/B551011/Durunubi/courseList?MobileOS=ETC&MobileApp=coursePlanner&_type=json&numOfRows=800`);
+      trailCache = pickItems(j).map(c => ({
+        name: c.crsKorNm, dist: +c.crsDstnc || 0, hour: +c.crsTotlRqrmHour || 0, level: c.crsLevel,
+        summary: (c.crsSummary || c.crsContents || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70),
+      })).filter(c => c.name);
+      trailAt = Date.now();
+    }
+    let list = trailCache;
+    if (region) {
+      const toks = region.split(/\s+/).filter(Boolean);
+      const hit = trailCache.filter(c => toks.some(t => (c.name + c.summary).includes(t)));
+      list = hit.length ? hit : trailCache;
+    }
+    res.json({ count: list.length, list: list.slice(0, 15) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 키/좌표 변환 자체 점검용
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처

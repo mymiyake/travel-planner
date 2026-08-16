@@ -219,7 +219,7 @@ const SECTIONS=[
     {id:'leisure2',t:'⛳ 골프장',kind:'widget',fn:'wGolf',ok:1},
     {id:'fishspot',t:'🎣 낚시터',kind:'widget',fn:'wFish',ok:1},
     {id:'camping',t:'🏕️ 캠핑장',kind:'widget',fn:'wCamping',ok:1},
-    {id:'trail',t:'둘레길',kind:'soon',ok:0},
+    {id:'trail',t:'🥾 둘레길',kind:'widget',fn:'wTrail',ok:1},
     {id:'pet',t:'반려동물 동반여행',kind:'soon',ok:0},
     {id:'barrier',t:'무장애 여행',kind:'soon',ok:0},
     {id:'market',t:'전통시장',kind:'soon',ok:0},
@@ -474,6 +474,10 @@ function wEr(el){const {s1,s2}=parseRegion(window.destAddr);
   fetch(`/api/er?stage1=${encodeURIComponent(s1)}&stage2=${encodeURIComponent(s2)}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${s1} ${s2} 응급실 데이터 없음</div>`;
     el.innerHTML=`<div class="wt">🏥 ${s1} ${s2} 응급실 실시간 병상</div>`+j.list.slice(0,8).map(x=>{const c=x.beds>=5?'#22c55e':x.beds>=1?'#f59e0b':'#ef4444';return `<div class="trow"><span>${x.name}${x.tel?` <span style="color:var(--muted)">${x.tel}</span>`:''}</span><span style="color:${c};font-weight:700">병상 ${x.beds}</span></div>`}).join('');});}
+function wTrail(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
+  fetch(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(r=>r.json()).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">둘레길 없음</div>';
+    el.innerHTML=`<div class="wt">🥾 두루누비 둘레길 코스</div>`+j.list.map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">난이도${x.level||'-'}</span></span><span><b>${x.dist}km</b> · ${Math.round(x.hour/60)||'-'}h</span></div>`).join('');});}
 function wGolf(el){nearList(el,`/api/golf?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'⛳');}
 function wFish(el){nearList(el,`/api/fish?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'🎣');}
 function wCamping(el){nearList(el,`/api/camping?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'🏕️');}

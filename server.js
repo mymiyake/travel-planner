@@ -549,6 +549,24 @@ app.get('/api/duty', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 고속버스 시간표 (검증된 터미널ID 쌍, 실데이터)
+app.get('/api/bus', async (req, res) => {
+  try {
+    const { dep, arr, date } = req.query;
+    if (!dep || !arr) return res.status(400).json({ error: 'dep,arr 필요' });
+    const d = (date || '').replace(/\D/g, '') || new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://api.koreaconnect.kr/01/1/2603101713597416530PDP/LOGIS/1613000/ExpBusInfo/GetStrtpntAlocFndExpbusInfo?_type=json&numOfRows=30&depTerminalId=${encodeURIComponent(dep)}&arrTerminalId=${encodeURIComponent(arr)}&depPlandTime=${d}`;
+    const j = await fetchJsonRetry(url);
+    const fmt = (t) => { const s = String(t); return s.length >= 12 ? s.slice(8, 10) + ':' + s.slice(10, 12) : s; };
+    const list = pickItems(j).map(x => ({
+      from: x.depPlaceNm, to: x.arrPlaceNm,
+      dep: fmt(x.depPlandTime), arr: fmt(x.arrPlandTime),
+      charge: +x.charge || 0, grade: x.gradeNm || '',
+    })).filter(x => x.dep);
+    res.json({ count: list.length, date: d, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 키/좌표 변환 자체 점검용
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처

@@ -489,6 +489,13 @@ function loadBus(uid){const dep=document.getElementById('bd-'+uid).value,arr=doc
   fetch(`/api/bus?dep=${dep}&arr=${arr}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return out.innerHTML='<div class="empty">해당 노선 운행 정보 없음</div>';
     out.innerHTML=`<div class="wt">🚌 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+'원':''}</span></div>`).join('');});}
+const RAIL={korail:{and:'com.korail.talk',ios:'1000558562',web:'https://www.letskorail.com/ebizbf/EbizBfTicketSearch.do'},
+            srt:{and:'kr.co.srail.newapp',ios:'1350286957',web:'https://etk.srail.kr/hpg/hra/01/selectScheduleList.do'}};
+function openRail(which){const A=RAIL[which];if(!A)return;const ua=navigator.userAgent;
+  if(/Android/i.test(ua)){const fb='https://play.google.com/store/apps/details?id='+A.and;
+    location.href='intent://open/#Intent;scheme=https;package='+A.and+';S.browser_fallback_url='+encodeURIComponent(fb)+';end';}
+  else if(/iPhone|iPad|iPod/i.test(ua)){location.href='https://apps.apple.com/kr/app/id'+A.ios;}
+  else{window.open(A.web,'_blank','noopener');}}
 let TRAIN_STNS=null;
 function wTrain(el){const uid=Math.random().toString(36).slice(2,6);
   el.innerHTML=`<div class="sub">${t('busHint')||'역 목록 불러오는 중…'}</div>`;
@@ -497,10 +504,11 @@ function wTrain(el){const uid=Math.random().toString(36).slice(2,6);
       <select class="mini" id="td-${uid}">${opts}</select><span>→</span>
       <select class="mini" id="ta-${uid}">${opts}</select>
       <button class="mini" onclick="loadTrain('${uid}')" style="cursor:pointer">🔍 ${t('busQ')||'조회'}</button></div>
-      <div class="seatbar" style="font-size:12px;margin-bottom:8px;padding:6px 8px;background:var(--card,#f1f5f9);border-radius:8px;line-height:1.6">
-        🎫 ${t('trainSeat')||'실시간 잔여석은 예매처에서 확인·구매'} ·
-        <a href="https://www.letskorail.com/ebizbf/EbizBfTicketSearch.do" target="_blank" rel="noopener" style="font-weight:700">KORAIL</a> ·
-        <a href="https://etk.srail.kr/hpg/hra/01/selectScheduleList.do" target="_blank" rel="noopener" style="font-weight:700">SRT</a></div>
+      <div class="seatbar" style="font-size:12px;margin-bottom:8px;padding:6px 8px;background:var(--card,#f1f5f9);border-radius:8px;line-height:1.8">
+        🎫 ${t('trainSeat')||'실시간 잔여석 확인·예매'}
+        <button class="mini railbtn" onclick="openRail('korail')" style="cursor:pointer;margin-left:4px">🚆 코레일+</button>
+        <button class="mini railbtn" onclick="openRail('srt')" style="cursor:pointer">🚄 SRT</button>
+        <span style="color:var(--muted);display:block;font-size:11px;margin-top:2px">${t('railOpen')||'앱이 있으면 앱으로, 없으면 설치 화면으로 연결'}</span></div>
       <div id="to-${uid}"><div class="sub">${t('trainHint')||'출발·도착역을 고르고 조회하세요'}</div></div>`;
     const pick=(sel,nm)=>{const o=[...document.getElementById(sel).options].find(o=>o.textContent===nm);if(o)document.getElementById(sel).value=o.value;};
     pick('td-'+uid,'서울');pick('ta-'+uid,'부산');};
@@ -638,10 +646,10 @@ const T={
    camping:'露营地',trail:'环山步道',pet:'宠物同行',barrier:'无障碍旅行',market:'传统市场',
    airport:'机场拥堵·大巴',toilet:'公厕',pharm:'药店',er:'急诊床位',shelter:'避难所',fx:'汇率',duty:'免税店'}
 };
-Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석은 예매처에서 확인·구매',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
-Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & buy tickets at:',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
-Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席・購入は予約サイトで:',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
-Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票请在订票网站查询购买:',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
+Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석 확인·예매',railOpen:'앱이 있으면 앱으로, 없으면 설치 화면으로 연결',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
+Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & book:',railOpen:'Opens the app if installed, else the install page',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
+Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席確認・予約:',railOpen:'アプリがあればアプリ、なければインストール画面へ',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
+Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票确认·预订:',railOpen:'有App则打开App，没有则跳转安装页',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);

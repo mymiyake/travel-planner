@@ -567,6 +567,42 @@ app.get('/api/bus', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 열차 역목록 (도시코드별 병합 캐시) — 잔여석은 공공API 미제공, 시간표+요금만
+const TRAIN_BASE = 'https://api.koreaconnect.kr/01/1/2603101713597416530PDP/LOGIS/1613000/TrainInfo';
+let trainStnCache = null, trainStnAt = 0;
+app.get('/api/train-stations', async (req, res) => {
+  try {
+    if (!trainStnCache || Date.now() - trainStnAt > 24 * 3600e3) {
+      const codes = ['11','21','22','23','24','25','26','31','32','33','34','35','36','37','38'];
+      const seen = {}, list = [];
+      for (const c of codes) {
+        const j = await fetchJsonRetry(`${TRAIN_BASE}/GetCtyAcctoTrainSttnList?_type=json&numOfRows=300&cityCode=${c}`, 8);
+        pickItems(j).forEach(x => { const id = x.nodeid, nm = x.nodename; if (id && nm && !seen[id]) { seen[id] = 1; list.push({ id, name: nm }); } });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      trainStnCache = list; trainStnAt = Date.now();
+    }
+    res.json({ count: trainStnCache.length, list: trainStnCache });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// 열차 시간표 (출발역/도착역 nodeid + 날짜)
+app.get('/api/train', async (req, res) => {
+  try {
+    const { dep, arr, date } = req.query;
+    if (!dep || !arr) return res.status(400).json({ error: 'dep,arr 필요' });
+    const d = (date || '').replace(/\D/g, '') || new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+    const j = await fetchJsonRetry(`${TRAIN_BASE}/GetStrtpntAlocFndTrainInfo?_type=json&numOfRows=60&depPlaceId=${encodeURIComponent(dep)}&arrPlaceId=${encodeURIComponent(arr)}&depPlandTime=${d}`, 8);
+    const fmt = (t) => { const s = String(t); return s.length >= 12 ? s.slice(8, 10) + ':' + s.slice(10, 12) : s; };
+    const list = pickItems(j).map(x => ({
+      grade: x.traingradename || '', no: x.trainno,
+      from: x.depplacename, to: x.arrplacename,
+      dep: fmt(x.depplandtime), arr: fmt(x.arrplandtime),
+      charge: +x.adultcharge || 0,
+    })).filter(x => x.dep);
+    res.json({ count: list.length, date: d, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 키/좌표 변환 자체 점검용
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처

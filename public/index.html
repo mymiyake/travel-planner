@@ -186,7 +186,7 @@ const SECTIONS=[
     {id:'transit',t:'대중교통 길찾기',kind:'widget',fn:'wTransit',ok:1},
     {id:'traffic',t:'실시간 교통량(정체)',kind:'widget',fn:'wTraffic',ok:1},
     {id:'restarea',t:'고속도로 휴게소 맛집',kind:'widget',fn:'wRestarea',ok:1},
-    {id:'train',t:'열차 시간표',kind:'soon',ok:0},
+    {id:'train',t:'🚆 열차 시간표',kind:'widget',fn:'wTrain',ok:1},
     {id:'busterm',t:'🚌 고속버스 시간표',kind:'widget',fn:'wBus',ok:1},
   ]},
   {id:'fuel',t:'⛽ 주유·충전',feats:[
@@ -201,7 +201,6 @@ const SECTIONS=[
     {id:'forecast',t:'3시간 예보',kind:'widget',fn:'wForecast',ok:1},
     {id:'air',t:'대기질(미세먼지)',kind:'widget',fn:'wAir',ok:1},
     {id:'wxalert',t:'기상특보',kind:'widget',fn:'wWxalert',ok:1},
-    {id:'beach',t:'해수욕장 날씨(수온·파고)',kind:'soon',ok:0},
   ]},
   {id:'eat',t:'🍜 먹거리·숙소',feats:[
     {id:'food',t:'맛집',kind:'tour',ctid:39,ok:1},
@@ -218,14 +217,11 @@ const SECTIONS=[
     {id:'fishspot',t:'🎣 낚시터',kind:'widget',fn:'wFish',ok:1},
     {id:'camping',t:'🏕️ 캠핑장',kind:'widget',fn:'wCamping',ok:1},
     {id:'trail',t:'🥾 둘레길',kind:'widget',fn:'wTrail',ok:1},
-    {id:'barrier',t:'무장애 여행',kind:'soon',ok:0},
-    {id:'market',t:'전통시장',kind:'soon',ok:0},
   ]},
   {id:'conv',t:'🚻 편의·안전',feats:[
     {id:'airport',t:'공항 혼잡도·리무진',kind:'airport',ok:1},
     {id:'pharm',t:'💊 약국',kind:'widget',fn:'wPharm',ok:1},
     {id:'er',t:'응급실 실시간 병상',kind:'widget',fn:'wEr',ok:1},
-    {id:'shelter',t:'대피소·쉼터',kind:'soon',ok:0},
   ]},
   {id:'etc',t:'💱 기타',feats:[
     {id:'duty',t:'🛍️ 면세점(제주공항)',kind:'widget',fn:'wDuty',ok:1},
@@ -493,6 +489,25 @@ function loadBus(uid){const dep=document.getElementById('bd-'+uid).value,arr=doc
   fetch(`/api/bus?dep=${dep}&arr=${arr}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return out.innerHTML='<div class="empty">해당 노선 운행 정보 없음</div>';
     out.innerHTML=`<div class="wt">🚌 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+'원':''}</span></div>`).join('');});}
+let TRAIN_STNS=null;
+function wTrain(el){const uid=Math.random().toString(36).slice(2,6);
+  el.innerHTML=`<div class="sub">${t('busHint')||'역 목록 불러오는 중…'}</div>`;
+  const build=(stns)=>{const opts=stns.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    el.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <select class="mini" id="td-${uid}">${opts}</select><span>→</span>
+      <select class="mini" id="ta-${uid}">${opts}</select>
+      <button class="mini" onclick="loadTrain('${uid}')" style="cursor:pointer">🔍 ${t('busQ')||'조회'}</button></div>
+      <div id="to-${uid}"><div class="sub">${t('trainHint')||'출발·도착역을 고르고 조회하세요 (좌석은 역에서 구매)'}</div></div>`;
+    const pick=(sel,nm)=>{const o=[...document.getElementById(sel).options].find(o=>o.textContent===nm);if(o)document.getElementById(sel).value=o.value;};
+    pick('td-'+uid,'서울');pick('ta-'+uid,'부산');};
+  if(TRAIN_STNS)return build(TRAIN_STNS);
+  fetch('/api/train-stations').then(r=>r.json()).then(j=>{if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">역 목록 실패</div>';TRAIN_STNS=j.list;build(j.list);});}
+function loadTrain(uid){const dep=document.getElementById('td-'+uid).value,arr=document.getElementById('ta-'+uid).value,out=document.getElementById('to-'+uid);
+  if(dep===arr)return out.innerHTML='<div class="empty">출발·도착이 같아요</div>';
+  out.innerHTML='<div class="sub">불러오는 중…</div>';
+  fetch(`/api/train?dep=${dep}&arr=${arr}`).then(r=>r.json()).then(j=>{
+    if(j.error||!j.list?.length)return out.innerHTML='<div class="empty">해당 구간 열차 없음(직통만 조회)</div>';
+    out.innerHTML=`<div class="wt">🚆 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+'원':''}</span></div>`).join('');});}
 function wTrail(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
   fetch(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">둘레길 없음</div>';
@@ -579,7 +594,7 @@ const T={
    go:'경로·전체 정보 찾기',needInput:'출발지·목적지를 입력하세요',calc:'좌표·경로 계산 중…',optOrder:'최적 경로',done:'완료 ✅ 섹션을 펼쳐 확인하세요',
    dist:'거리',time:'시간',cheap:'최저가',myDash:'⭐ 내 대시보드',dashHint:'메뉴에서 ⭐를 눌러 추가',bigMap:'지도 크게',
    s_move:'🚗 이동·경로',s_fuel:'⛽ 주유·충전',s_weather:'🌤️ 날씨·환경',s_eat:'🍜 먹거리·숙소',s_play:'🎡 볼거리·체험',s_conv:'🚻 편의·안전',s_etc:'💱 기타',
-   transit:'대중교통 길찾기',traffic:'실시간 교통량',restarea:'고속도로 휴게소',train:'열차 시간표',busterm:'🚌 고속버스 시간표',ferry:'여객선 운항',
+   transit:'대중교통 길찾기',traffic:'실시간 교통량',restarea:'고속도로 휴게소',train:'🚆 열차 시간표',busterm:'🚌 고속버스 시간표',ferry:'여객선 운항',
    gas:'경로 최저가 주유소',gasavg:'유종별 전국 평균가',evcharge:'전기차 충전소(최근접)',h2:'수소충전소 실시간',lpg:'LPG 충전소(최근접)',
    weather:'현재 날씨',forecast:'3시간 예보',air:'대기질(미세먼지)',wxalert:'기상특보',beach:'해수욕장 날씨(수온·파고)',uv:'자외선 지수',
    food:'맛집',stay:'숙소',spot:'관광지',culture:'문화시설',festival:'축제·공연·행사',course:'추천 여행코스',leisure:'레포츠',shopping:'쇼핑',
@@ -590,7 +605,7 @@ const T={
    go:'Find route & info',needInput:'Enter origin & destination',calc:'Calculating route…',optOrder:'Optimized route',done:'Done ✅ Expand a section',
    dist:'Distance',time:'Time',cheap:'Cheapest',myDash:'⭐ My Dashboard',dashHint:'Tap ⭐ in the menu to add',bigMap:'Bigger map',
    s_move:'🚗 Transport',s_fuel:'⛽ Fuel·Charge',s_weather:'🌤️ Weather',s_eat:'🍜 Food·Stay',s_play:'🎡 Attractions',s_conv:'🚻 Convenience·Safety',s_etc:'💱 Others',
-   transit:'Public transit',traffic:'Live traffic',restarea:'Expressway rest areas',train:'Train schedule',busterm:'🚌 Express bus',ferry:'Ferry service',
+   transit:'Public transit',traffic:'Live traffic',restarea:'Expressway rest areas',train:'🚆 Train',busterm:'🚌 Express bus',ferry:'Ferry service',
    gas:'Cheapest gas on route',gasavg:'Avg fuel price',evcharge:'EV chargers (nearby)',h2:'Hydrogen stations (live)',lpg:'LPG stations (nearby)',
    weather:'Current weather',forecast:'3-hr forecast',air:'Air quality',wxalert:'Weather alerts',beach:'Beach weather',uv:'UV index',
    food:'Restaurants',stay:'Lodging',spot:'Attractions',culture:'Culture spots',festival:'Festivals·Events',course:'Travel courses',leisure:'Leisure sports',shopping:'Shopping',
@@ -601,7 +616,7 @@ const T={
    go:'ルート・情報を探す',needInput:'出発地・目的地を入力',calc:'ルート計算中…',optOrder:'最適ルート',done:'完了 ✅ セクションを開いて確認',
    dist:'距離',time:'時間',cheap:'最安値',myDash:'⭐ マイダッシュボード',dashHint:'メニューの⭐で追加',bigMap:'地図を拡大',
    s_move:'🚗 移動・ルート',s_fuel:'⛽ 給油・充電',s_weather:'🌤️ 天気・環境',s_eat:'🍜 グルメ・宿',s_play:'🎡 観光・体験',s_conv:'🚻 便利・安全',s_etc:'💱 その他',
-   transit:'公共交通',traffic:'リアルタイム交通量',restarea:'高速SA',train:'列車時刻表',busterm:'🚌 高速バス時刻表',ferry:'旅客船',
+   transit:'公共交通',traffic:'リアルタイム交通量',restarea:'高速SA',train:'🚆 列車時刻表',busterm:'🚌 高速バス時刻表',ferry:'旅客船',
    gas:'ルート最安ガソリン',gasavg:'燃料平均価格',evcharge:'EV充電(近隣)',h2:'水素ST(リアルタイム)',lpg:'LPG(近隣)',
    weather:'現在の天気',forecast:'3時間予報',air:'大気質',wxalert:'気象特報',beach:'海水浴場の天気',uv:'紫外線指数',
    food:'グルメ',stay:'宿泊',spot:'観光地',culture:'文化施設',festival:'祭り・イベント',course:'旅行コース',leisure:'レジャー',shopping:'ショッピング',
@@ -612,17 +627,17 @@ const T={
    go:'查找路线·信息',needInput:'请输入出发地和目的地',calc:'计算路线中…',optOrder:'最优路线',done:'完成 ✅ 展开分区查看',
    dist:'距离',time:'时间',cheap:'最低价',myDash:'⭐ 我的仪表板',dashHint:'在菜单点⭐添加',bigMap:'放大地图',
    s_move:'🚗 出行·路线',s_fuel:'⛽ 加油·充电',s_weather:'🌤️ 天气·环境',s_eat:'🍜 美食·住宿',s_play:'🎡 景点·体验',s_conv:'🚻 便利·安全',s_etc:'💱 其他',
-   transit:'公共交通',traffic:'实时交通量',restarea:'高速服务区',train:'列车时刻',busterm:'🚌 高速客运时刻',ferry:'客船',
+   transit:'公共交通',traffic:'实时交通量',restarea:'高速服务区',train:'🚆 列车时刻',busterm:'🚌 高速客运时刻',ferry:'客船',
    gas:'路线最低价加油站',gasavg:'油价平均',evcharge:'电动充电(附近)',h2:'加氢站(实时)',lpg:'LPG(附近)',
    weather:'当前天气',forecast:'3小时预报',air:'空气质量',wxalert:'气象预警',beach:'海水浴场天气',uv:'紫外线指数',
    food:'美食',stay:'住宿',spot:'景点',culture:'文化设施',festival:'节庆·活动',course:'旅游线路',leisure:'休闲运动',shopping:'购物',
    camping:'露营地',trail:'环山步道',pet:'宠物同行',barrier:'无障碍旅行',market:'传统市场',
    airport:'机场拥堵·大巴',toilet:'公厕',pharm:'药店',er:'急诊床位',shelter:'避难所',fx:'汇率',duty:'免税店'}
 };
-Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
-Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
-Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
-Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
+Object.assign(T.ko,{navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요 (좌석은 역에서 구매)',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
+Object.assign(T.en,{navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search (buy seats at the station)',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
+Object.assign(T.ja,{navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会（座席は駅で購入）',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
+Object.assign(T.zh,{navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询（座位在车站购买）',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);

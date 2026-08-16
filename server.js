@@ -535,6 +535,20 @@ app.get('/api/pharm', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 면세점 (제주공항 JDC 매장 목록)
+let dutyCache = null, dutyAt = 0;
+app.get('/api/duty', async (req, res) => {
+  try {
+    if (!dutyCache || Date.now() - dutyAt > 12 * 3600e3) {
+      const j = await fetchJsonRetry(`https://api.koreaconnect.kr/01/1/2603101713597416530PDP/CULTR/B551391/jdcdutyfreeshops/brand?type=json&numOfRows=200`);
+      const seen = {}, list = [];
+      pickItems(j).forEach(x => { const nm = x.POS_NM; if (nm && !seen[nm]) { seen[nm] = 1; list.push({ name: nm, cat: x.POS_BRAN_NM, tel: x.TEL_NO, open: x.POS_START_TIME, close: x.POS_END_TIME }); } });
+      dutyCache = list; dutyAt = Date.now();
+    }
+    res.json({ count: dutyCache.length, list: dutyCache });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 키/좌표 변환 자체 점검용
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처

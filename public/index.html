@@ -233,7 +233,7 @@ const SECTIONS=[
   ]},
   {id:'etc',t:'💱 기타',feats:[
     {id:'fx',t:'환율',kind:'soon',ok:0},
-    {id:'duty',t:'면세점',kind:'soon',ok:0},
+    {id:'duty',t:'🛍️ 면세점(제주공항)',kind:'widget',fn:'wDuty',ok:1},
   ]},
 ];
 const FEAT={};SECTIONS.forEach(s=>s.feats.forEach(f=>{f.sec=s.id;FEAT[f.id]=f;}));
@@ -481,6 +481,10 @@ function wPharm(el){const {s1}=parseRegion(window.destAddr);let code='';for(cons
   fetch(`/api/pharm?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sidoCd=${code}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 약국 없음(10km)</div>';
     el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">💊 ${x.name}</span><span class="meta">${x.dist}m</span></div><div class="meta">${x.addr||''}${x.tel?' · '+x.tel:''}</div></div></div>`).join('');});}
+function wDuty(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
+  fetch(`/api/duty`).then(r=>r.json()).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">실패</div>';
+    el.innerHTML=`<div class="wt">🛍️ 제주공항 JDC 면세점 ${j.count}개 매장</div>`+j.list.slice(0,15).map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">${x.cat||''}</span></span><span class="sub">${x.open?x.open.replace(/(\\d{2})(\\d{2})/,'$1:$2')+'~'+(x.close||'').replace(/(\\d{2})(\\d{2})/,'$1:$2'):''}</span></div>`).join('');});}
 function wTrail(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
   fetch(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">둘레길 없음</div>';

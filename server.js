@@ -510,6 +510,31 @@ app.get('/api/trail', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 약국 (심평원, 시도코드별 페이징 + 거리순)
+const PHARM_URL = 'https://api.koreaconnect.kr/01/1/2603101713597416530PDP/HEALTH/B551182/pharmacyInfoService/getParmacyBasisList';
+const pharmCache = {}; // sidoCd -> {t, list}
+app.get('/api/pharm', async (req, res) => {
+  try {
+    const { lat, lng, sidoCd } = req.query;
+    if (!lat || !lng || !sidoCd) return res.status(400).json({ error: 'lat,lng,sidoCd 필요' });
+    const c = pharmCache[sidoCd];
+    if (!c || Date.now() - c.t > 12 * 3600e3) {
+      let all = [];
+      for (let p = 1; p <= 8; p++) {
+        const j = await fetchJsonRetry(`${PHARM_URL}?_type=json&numOfRows=1000&pageNo=${p}&sidoCd=${sidoCd}`);
+        const items = [].concat(j?.response?.body?.items?.item || []);
+        all = all.concat(items);
+        const total = +j?.response?.body?.totalCount || 0;
+        if (all.length >= total || items.length < 1000) break;
+      }
+      pharmCache[sidoCd] = { t: Date.now(), list: all.filter(x => x.XPos && x.YPos).map(x => ({ name: x.yadmNm, addr: x.addr, tel: x.telno, lat: +x.YPos, lng: +x.XPos })) };
+    }
+    const list = pharmCache[sidoCd].list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
+      .filter(x => x.dist <= 10000).sort((a, b) => a.dist - b.dist).slice(0, 15);
+    res.json({ count: list.length, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 키/좌표 변환 자체 점검용
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처

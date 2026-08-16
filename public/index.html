@@ -227,7 +227,7 @@ const SECTIONS=[
   {id:'conv',t:'🚻 편의·안전',feats:[
     {id:'airport',t:'공항 혼잡도·리무진',kind:'airport',ok:1},
     {id:'toilet',t:'공중화장실',kind:'soon',ok:0},
-    {id:'pharm',t:'약국',kind:'soon',ok:0},
+    {id:'pharm',t:'💊 약국',kind:'widget',fn:'wPharm',ok:1},
     {id:'er',t:'응급실 실시간 병상',kind:'widget',fn:'wEr',ok:1},
     {id:'shelter',t:'대피소·쉼터',kind:'soon',ok:0},
   ]},
@@ -474,6 +474,13 @@ function wEr(el){const {s1,s2}=parseRegion(window.destAddr);
   fetch(`/api/er?stage1=${encodeURIComponent(s1)}&stage2=${encodeURIComponent(s2)}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${s1} ${s2} 응급실 데이터 없음</div>`;
     el.innerHTML=`<div class="wt">🏥 ${s1} ${s2} 응급실 실시간 병상</div>`+j.list.slice(0,8).map(x=>{const c=x.beds>=5?'#22c55e':x.beds>=1?'#f59e0b':'#ef4444';return `<div class="trow"><span>${x.name}${x.tel?` <span style="color:var(--muted)">${x.tel}</span>`:''}</span><span style="color:${c};font-weight:700">병상 ${x.beds}</span></div>`}).join('');});}
+const PHARM_SIDO={'서울':'110000','부산':'210000','대구':'230000','인천':'220000','광주':'240000','대전':'250000','울산':'260000','세종':'410000','경기':'310000','강원':'320000','충청북':'330000','충북':'330000','충청남':'340000','충남':'340000','전라북':'350000','전북':'350000','전라남':'360000','전남':'360000','경상북':'370000','경북':'370000','경상남':'380000','경남':'380000','제주':'390000'};
+function wPharm(el){const {s1}=parseRegion(window.destAddr);let code='';for(const k in PHARM_SIDO)if((s1||'').includes(k)){code=PHARM_SIDO[k];break;}
+  if(!code)return el.innerHTML='<div class="empty">목적지 시도를 특정할 수 없어요</div>';
+  el.innerHTML='<div class="sub">불러오는 중…</div>';
+  fetch(`/api/pharm?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sidoCd=${code}`).then(r=>r.json()).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 약국 없음(10km)</div>';
+    el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">💊 ${x.name}</span><span class="meta">${x.dist}m</span></div><div class="meta">${x.addr||''}${x.tel?' · '+x.tel:''}</div></div></div>`).join('');});}
 function wTrail(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
   fetch(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(r=>r.json()).then(j=>{
     if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">둘레길 없음</div>';

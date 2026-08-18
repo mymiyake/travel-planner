@@ -15,6 +15,8 @@ const PORT = process.env.PORT || 8792;
 // === 키는 .env(로컬) 또는 환경변수로 주입 — 저장소에 커밋하지 않음 ===
 const API_KEY = process.env.KC_API_KEY || '';            // KoreaConnect 공통 인증키
 const KAKAO_REST_KEY = process.env.KAKAO_REST_KEY || ''; // 카카오 REST(길찾기)
+const NAVER_ID = process.env.NAVER_ID || '';            // 네이버 검색 API Client ID
+const NAVER_SECRET = process.env.NAVER_SECRET || '';    // 네이버 검색 API Client Secret
 
 // === 엔드포인트 (나의 신청 이력에서 회수) ===
 const EP = {
@@ -600,6 +602,37 @@ app.get('/api/train', async (req, res) => {
       charge: +x.adultcharge || 0,
     })).filter(x => x.dep);
     res.json({ count: list.length, date: d, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 네이버 블로그 리뷰 많은 맛집 (지역검색 sort=comment + 블로그 total 카운트)
+const naverFoodCache = {};
+app.get('/api/naver-food', async (req, res) => {
+  try {
+    if (!NAVER_ID || !NAVER_SECRET) return res.json({ error: 'NO_KEY' });
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q 필요' });
+    const c = naverFoodCache[q];
+    if (c && Date.now() - c.t < 6 * 3600e3) return res.json({ count: c.list.length, list: c.list });
+    const H = { 'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET };
+    const strip = (s) => (s || '').replace(/<[^>]+>/g, '');
+    const lr = await fetch(`https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q + ' 맛집')}&display=5&sort=comment`, { headers: H });
+    const lj = await lr.json();
+    const items = lj.items || [];
+    const list = [];
+    for (const it of items) {
+      const name = strip(it.title);
+      let reviews = 0;
+      try {
+        const br = await fetch(`https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(name)}&display=1`, { headers: H });
+        const bj = await br.json();
+        reviews = +bj.total || 0;
+      } catch (e) {}
+      list.push({ name, cat: it.category, addr: it.roadAddress || it.address, lat: +it.mapy / 1e7, lng: +it.mapx / 1e7, reviews });
+    }
+    list.sort((a, b) => b.reviews - a.reviews);
+    naverFoodCache[q] = { t: Date.now(), list };
+    res.json({ count: list.length, list });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

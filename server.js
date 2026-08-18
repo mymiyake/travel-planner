@@ -17,6 +17,7 @@ const API_KEY = process.env.KC_API_KEY || '';            // KoreaConnect 공통 
 const KAKAO_REST_KEY = process.env.KAKAO_REST_KEY || ''; // 카카오 REST(길찾기)
 const NAVER_ID = process.env.NAVER_ID || '';            // 네이버 검색 API Client ID
 const NAVER_SECRET = process.env.NAVER_SECRET || '';    // 네이버 검색 API Client Secret
+const DATA_KEY = process.env.DATA_GO_KR_KEY || '';      // 공공데이터포털 일반인증키(Decoding)
 
 // === 엔드포인트 (나의 신청 이력에서 회수) ===
 const EP = {
@@ -652,6 +653,67 @@ app.get('/api/naver-food', async (req, res) => {
     }
     list.sort((a, b) => b.reviews - a.reviews);
     naverFoodCache[q] = { t: Date.now(), list };
+    res.json({ count: list.length, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 공공데이터포털 페이징 헬퍼 (표준데이터 공통 envelope)
+async function dataGoPaged(url, extra = {}, maxPages = 4) {
+  let all = [];
+  for (let p = 1; p <= maxPages; p++) {
+    const q = new URLSearchParams({ serviceKey: DATA_KEY, pageNo: p, numOfRows: 1000, type: 'json', ...extra });
+    let j;
+    try { const r = await fetch(`${url}?${q}`); j = await r.json(); } catch (e) { break; }
+    const items = [].concat(j?.response?.body?.items || []);
+    all = all.concat(items);
+    const total = +j?.response?.body?.totalCount || 0;
+    if (all.length >= total || items.length < 1000) break;
+  }
+  return all;
+}
+// 전국 무인교통단속(과속/신호) 카메라 — 시도 캐시 + 거리필터
+const speedCamCache = {};
+app.get('/api/speedcam', async (req, res) => {
+  try {
+    if (!DATA_KEY) return res.json({ error: 'NO_KEY' });
+    const { lat, lng, sido } = req.query;
+    if (!sido) return res.status(400).json({ error: 'sido 필요' });
+    const c = speedCamCache[sido];
+    if (!c || Date.now() - c.t > 24 * 3600e3) {
+      const items = await dataGoPaged('https://api.data.go.kr/openapi/tn_pubr_public_unmanned_traffic_camera_api', { ctprvnNm: sido }, 4);
+      speedCamCache[sido] = { t: Date.now(), list: items.map(x => ({
+        name: x.itlpc || x.roadName || x.cctvNm || '단속구간',
+        kind: x.regltSe || x.mnlssRegltSe || x.prtCctvSeNm || '',
+        speed: +(x.lmttVe || x.spdLmt || x.maxSpd || 0) || 0,
+        lat: +(x.latitude || x.lat), lng: +(x.longitude || x.lot),
+      })).filter(x => x.lat && x.lng) };
+    }
+    let list = speedCamCache[sido].list;
+    if (lat && lng) list = list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
+      .filter(x => x.dist <= 20000).sort((a, b) => a.dist - b.dist).slice(0, 25);
+    res.json({ count: list.length, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// 전국 주정차단속 CCTV — 시도 캐시 + 거리필터
+const parkCamCache = {};
+app.get('/api/parkcam', async (req, res) => {
+  try {
+    if (!DATA_KEY) return res.json({ error: 'NO_KEY' });
+    const { lat, lng, sido } = req.query;
+    if (!sido) return res.status(400).json({ error: 'sido 필요' });
+    const c = parkCamCache[sido];
+    if (!c || Date.now() - c.t > 24 * 3600e3) {
+      const items = await dataGoPaged('https://api.data.go.kr/openapi/tn_pubr_public_prkng_cctv_api', { ctprvnNm: sido }, 4);
+      parkCamCache[sido] = { t: Date.now(), list: items.map(x => ({
+        name: x.cctvNm || x.itlpc || '주정차단속',
+        dir: x.reglatDirection || '',
+        addr: x.rdnmadr || x.lnmadr || '',
+        lat: +(x.latitude || x.lat), lng: +(x.longitude || x.lot),
+      })).filter(x => x.lat && x.lng) };
+    }
+    let list = parkCamCache[sido].list;
+    if (lat && lng) list = list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
+      .filter(x => x.dist <= 15000).sort((a, b) => a.dist - b.dist).slice(0, 25);
     res.json({ count: list.length, list });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

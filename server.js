@@ -605,6 +605,30 @@ app.get('/api/train', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 네이버 지역검색 공용 헬퍼 (mapx/mapy=WGS84*1e7)
+async function naverLocal(query, sort = 'comment', display = 5) {
+  const H = { 'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET };
+  const r = await fetch(`https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=${display}&sort=${sort}`, { headers: H });
+  const j = await r.json();
+  const strip = (s) => (s || '').replace(/<[^>]+>/g, '');
+  return (j.items || []).map(it => ({ name: strip(it.title), cat: it.category, addr: it.roadAddress || it.address, lat: +it.mapy / 1e7, lng: +it.mapx / 1e7, link: it.link }));
+}
+
+// 전통시장 (네이버 지역검색 재활용 — 별도 사용신청 불필요)
+const marketCache = {};
+app.get('/api/market', async (req, res) => {
+  try {
+    if (!NAVER_ID || !NAVER_SECRET) return res.json({ error: 'NO_KEY' });
+    const q = (req.query.q || '').trim();
+    if (!q) return res.status(400).json({ error: 'q 필요' });
+    const c = marketCache[q];
+    if (c && Date.now() - c.t < 12 * 3600e3) return res.json({ count: c.list.length, list: c.list });
+    const list = (await naverLocal(`${q} 전통시장`, 'comment', 5)).filter(x => x.lat && x.lng);
+    marketCache[q] = { t: Date.now(), list };
+    res.json({ count: list.length, list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 네이버 블로그 리뷰 많은 맛집 (지역검색 sort=comment + 블로그 total 카운트)
 const naverFoodCache = {};
 app.get('/api/naver-food', async (req, res) => {
@@ -615,20 +639,16 @@ app.get('/api/naver-food', async (req, res) => {
     const c = naverFoodCache[q];
     if (c && Date.now() - c.t < 6 * 3600e3) return res.json({ count: c.list.length, list: c.list });
     const H = { 'X-Naver-Client-Id': NAVER_ID, 'X-Naver-Client-Secret': NAVER_SECRET };
-    const strip = (s) => (s || '').replace(/<[^>]+>/g, '');
-    const lr = await fetch(`https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q + ' 맛집')}&display=5&sort=comment`, { headers: H });
-    const lj = await lr.json();
-    const items = lj.items || [];
+    const places = await naverLocal(`${q} 맛집`, 'comment', 5);
     const list = [];
-    for (const it of items) {
-      const name = strip(it.title);
+    for (const p of places) {
       let reviews = 0;
       try {
-        const br = await fetch(`https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(name)}&display=1`, { headers: H });
+        const br = await fetch(`https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(p.name)}&display=1`, { headers: H });
         const bj = await br.json();
         reviews = +bj.total || 0;
       } catch (e) {}
-      list.push({ name, cat: it.category, addr: it.roadAddress || it.address, lat: +it.mapy / 1e7, lng: +it.mapx / 1e7, reviews });
+      list.push({ name: p.name, cat: p.cat, addr: p.addr, lat: p.lat, lng: p.lng, reviews });
     }
     list.sort((a, b) => b.reviews - a.reviews);
     naverFoodCache[q] = { t: Date.now(), list };

@@ -68,6 +68,9 @@
   .card .meta{font-size:10.5px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .badge{display:inline-block;font-size:9px;padding:2px 6px;border-radius:20px;margin-right:4px}
   .b-cheap{background:var(--gas);color:#04210f;font-weight:700}
+  .b-spon{background:#7c3aed;color:#fff;font-weight:700}
+  .tktbtn{margin-left:auto;text-decoration:none;font-size:15px;padding:2px 6px;border-radius:7px;background:var(--panel);flex:none}
+  .rentalcta{display:block;margin-top:8px;padding:9px;text-align:center;background:linear-gradient(90deg,#0ea5e9,#6366f1);color:#fff;border-radius:9px;font-size:12.5px;font-weight:700;text-decoration:none}
   .empty{color:var(--muted);font-size:11.5px;text-align:center;padding:14px 8px;line-height:1.6}
   .wt{font-size:11px;color:var(--muted);margin-bottom:6px}
   .big{font-size:20px;font-weight:700}.sub{font-size:11px;color:var(--muted);margin-top:2px}
@@ -129,6 +132,7 @@
       </div>
       <button class="primary" id="go">경로·전체 정보 찾기</button>
       <div class="status" id="status"></div>
+      <a id="rentalCta" href="#" target="_blank" rel="noopener" class="rentalcta">🚗 <span data-i18n="rentalCta">렌터카 예약</span> ›</a>
 
       <div class="summary" id="summary" style="display:none">
         <div class="box"><b id="sumDist">–</b><span id="sumDistL">거리</span></div>
@@ -139,6 +143,7 @@
         <div class="dh" id="dashLabel">🧳 내 여행 정보</div>
         <div id="dashBody"></div>
       </div>
+      <div id="adSlot" style="display:none;margin-top:10px"></div>
 
       <div id="menu" style="display:none"></div>
 
@@ -313,6 +318,22 @@ function buildDashPicker(){
 }
 
 /* ---------- 지도 엔진: 구글(다국어) 우선, 없으면 카카오(한글) 폴백 ---------- */
+/* ---------- 수익화 설정(플러그앤플레이): ID만 채우면 즉시 활성 ---------- */
+const MONEY={
+  klookAid:'',      // Klook 제휴 ID (klook.com/affiliate 가입 후)
+  rentalUrl:'https://kr.trip.com/carhire/',  // 렌터카 제휴 링크로 교체
+  adsensePub:'',    // Google AdSense 'ca-pub-XXXXXXXX'
+  adsenseSlot:'',   // 광고 단위 슬롯 ID
+  sponsors:{},      // 예: {'스톤게이트':1} → 상호에 포함되면 '추천' 배지+상단정렬
+};
+const KLOOK_LANG={ko:'ko',en:'en-US',ja:'ja',zh:'zh-CN'};
+function klookUrl(q){let u=`https://www.klook.com/${KLOOK_LANG[curLang]||'en-US'}/search/?query=${encodeURIComponent(q||'Korea')}`;if(MONEY.klookAid)u+=`&aid=${encodeURIComponent(MONEY.klookAid)}`;return u;}
+function isSponsor(n){return n&&Object.keys(MONEY.sponsors).some(k=>n.includes(k));}
+function initAds(){const el=document.getElementById('adSlot');if(!el)return;
+  if(!MONEY.adsensePub){el.style.display='none';return;}
+  el.style.display='block';el.innerHTML=`<ins class="adsbygoogle" style="display:block" data-ad-client="${MONEY.adsensePub}" data-ad-slot="${MONEY.adsenseSlot}" data-ad-format="auto" data-full-width-responsive="true"></ins>`;
+  if(!window.__adsLoaded){window.__adsLoaded=1;const s=document.createElement('script');s.async=true;s.crossOrigin='anonymous';s.src=`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${MONEY.adsensePub}`;document.head.appendChild(s);}
+  try{(window.adsbygoogle=window.adsbygoogle||[]).push({});}catch(e){}}
 const DEFAULT_KAKAO_JS='498e6c86aec0d186027a9ab6c9d9e29c';
 let mapEngine=null;
 if(!store.get('kakao_js'))store.set('kakao_js',DEFAULT_KAKAO_JS);
@@ -425,12 +446,17 @@ function renderGas(){
     <div class="meta">${brand(it.brand)} · ${Math.round(it.distance)}m</div></div></div>`).join('');
 }
 function renderTour(id){
-  const arr=data[id]||[];
+  let arr=(data[id]||[]).slice();
   if(!arr.length){let m='결과 없음';if(id==='stay')m='관광공사 등록 숙소 없음<br><span style="font-size:10px">※ 야놀자·여기어때 등 예약숙소는 별도 제휴 API 필요</span>';return `<div class="empty">${m}</div>`;}
+  arr.sort((a,b)=>(isSponsor(b.name)?1:0)-(isSponsor(a.name)?1:0));
+  const ticketable=['spot','leisure','culture','festival'].includes(id);
   let head='';if(id==='stay')head='<div class="empty" style="text-align:left;padding:0 0 8px">ℹ️ 관광공사 등록 숙소만 표시(관광호텔·콘도 등)</div>';
-  return head+arr.map(it=>`<div class="card" onclick="focusOn(${it.lat},${it.lng},'${esc(it.name)}')">${it.img?`<img src="${it.img}" onerror="this.style.display='none'">`:''}
-    <div class="body"><div class="top"><span class="name">${it.name}</span></div>
-    <div class="meta">${it.addr||''}${it.tel?' · '+it.tel:''}</div></div></div>`).join('');
+  return head+arr.map(it=>{
+    const spon=isSponsor(it.name)?'<span class="badge b-spon">추천</span>':'';
+    const tkt=ticketable?`<a class="tktbtn" href="${klookUrl(it.name)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Klook 예매">🎟️</a>`:'';
+    return `<div class="card" onclick="focusOn(${it.lat},${it.lng},'${esc(it.name)}')">${it.img?`<img src="${it.img}" onerror="this.style.display='none'">`:''}
+    <div class="body"><div class="top"><span class="name">${spon}${it.name}</span>${tkt}</div>
+    <div class="meta">${it.addr||''}${it.tel?' · '+it.tel:''}</div></div></div>`;}).join('');
 }
 const owIcon=c=>`https://openweathermap.org/img/wn/${c}@2x.png`;
 const aqiColor=a=>({1:'#22c55e',2:'#84cc16',3:'#f59e0b',4:'#ef4444',5:'#a855f7'})[a]||'#555';
@@ -472,7 +498,8 @@ function wRestarea(el){el.innerHTML='<div class="sub">불러오는 중…</div>'
   el.innerHTML=`<div class="wt">🍜 휴게소 추천 메뉴</div>`+uniq.map(x=>`<div class="trow"><span>${x.rest.replace('휴게소','')} · ${x.food}</span><span><b>${x.cost.toLocaleString()}원</b></span></div>`).join('');});}
 function nearList(el,url,icon,color){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(url).then(r=>r.json()).then(j=>{
   if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변에 없음(반경 밖일 수 있어요)</div>';
-  el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')">${x.img?`<img src="${x.img}" onerror="this.style.display='none'">`:''}<div class="body"><div class="top"><span class="name">${icon} ${x.name}</span><span class="meta">${x.dist?Math.round(x.dist/1000)+'km':''}</span></div><div class="meta">${x.addr||''}${x.type?' · '+x.type:''}${x.kind?' · '+x.kind:''}</div></div></div>`).join('');});}
+  const list=j.list.slice().sort((a,b)=>(isSponsor(b.name)?1:0)-(isSponsor(a.name)?1:0));
+  el.innerHTML=list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')">${x.img?`<img src="${x.img}" onerror="this.style.display='none'">`:''}<div class="body"><div class="top"><span class="name">${isSponsor(x.name)?'<span class="badge b-spon">추천</span>':''}${icon} ${x.name}</span><span class="meta">${x.dist?Math.round(x.dist/1000)+'km':''}</span></div><div class="meta">${x.addr||''}${x.type?' · '+x.type:''}${x.kind?' · '+x.kind:''}</div></div></div>`).join('');});}
 const SIDO={'서울':'서울특별시','부산':'부산광역시','대구':'대구광역시','인천':'인천광역시','광주':'광주광역시','대전':'대전광역시','울산':'울산광역시','세종':'세종특별자치시','경기':'경기도','강원':'강원특별자치도','충북':'충청북도','충청북':'충청북도','충남':'충청남도','충청남':'충청남도','전북':'전북특별자치도','전라북':'전북특별자치도','전남':'전라남도','전라남':'전라남도','경북':'경상북도','경상북':'경상북도','경남':'경상남도','경상남':'경상남도','제주':'제주특별자치도'};
 function parseRegion(addr){addr=addr||'';let s1='';for(const k in SIDO)if(addr.startsWith(k)){s1=SIDO[k];break;}
   const toks=addr.split(/\s+/);const s2=toks.find(t=>/(구|군|시)$/.test(t)&&!Object.keys(SIDO).some(k=>t.startsWith(k)))||toks[1]||'';
@@ -684,10 +711,10 @@ const T={
    camping:'露营地',trail:'环山步道',pet:'宠物同行',barrier:'无障碍旅行',market:'🏪 传统市场',
    airport:'机场拥堵·大巴',toilet:'公厕',pharm:'药店',er:'急诊床位',shelter:'避难所',fx:'汇率',duty:'免税店'}
 };
-Object.assign(T.ko,{mktTitle:'전통시장',ytNoKey:'설정 → YouTube API 키를 넣으면 인기 맛집 영상이 표시됩니다',ytPopular:'인기 영상',nvNoKey:'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다',nvTitle:'블로그 리뷰 많은 맛집',keyIssue:'발급',keyGmapNote:'(다국어 지도)',keyGmapHelp:'① 링크 열기 → ② "Maps JavaScript API" 사용 설정 → ③ 사용자 인증정보 → API 키 만들기 → ④ AIza…로 시작하는 키 복사해 붙여넣기',keyYtNote:'(유튜브 맛집)',keyYtHelp:'① 링크에서 "YouTube Data API v3" 사용 설정 → ② 사용자 인증정보 → API 키 만들기 → ③ 붙여넣기',keyNaverNote:'🟢 네이버 맛집은 보안상 서버(.env)에 NAVER_ID/NAVER_SECRET로 넣어야 합니다.',navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석 확인·예매',railOpen:'앱이 있으면 앱으로, 없으면 설치 화면으로 연결',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
-Object.assign(T.en,{mktTitle:'Traditional markets',ytNoKey:'Add a YouTube API key in Settings to see popular food videos',ytPopular:'popular',nvNoKey:'Add NAVER_ID/NAVER_SECRET to server .env to enable',nvTitle:'Most-reviewed restaurants (blogs)',keyIssue:'Get key',keyGmapNote:'(multilingual map)',keyGmapHelp:'① Open link → ② Enable "Maps JavaScript API" → ③ Credentials → Create API key → ④ Paste the AIza… key',keyYtNote:'(YouTube food)',keyYtHelp:'① Enable "YouTube Data API v3" → ② Credentials → Create API key → ③ Paste',keyNaverNote:'🟢 Naver food needs NAVER_ID/NAVER_SECRET in server .env (secret must stay server-side).',navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & book:',railOpen:'Opens the app if installed, else the install page',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
-Object.assign(T.ja,{mktTitle:'伝統市場',ytNoKey:'設定でYouTube APIキーを入れると人気グルメ動画が表示されます',ytPopular:'人気動画',nvNoKey:'サーバー.envにNAVER_ID/NAVER_SECRETを入れると表示',nvTitle:'ブログレビューが多いグルメ',keyIssue:'発行',keyGmapNote:'(多言語地図)',keyGmapHelp:'① リンクを開く → ②「Maps JavaScript API」を有効化 → ③ 認証情報 → APIキー作成 → ④ AIza…キーを貼付',keyYtNote:'(YouTubeグルメ)',keyYtHelp:'①「YouTube Data API v3」を有効化 → ② 認証情報 → APIキー作成 → ③ 貼付',keyNaverNote:'🟢 Naverグルメはサーバー(.env)にNAVER_ID/NAVER_SECRETが必要です。',navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席確認・予約:',railOpen:'アプリがあればアプリ、なければインストール画面へ',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
-Object.assign(T.zh,{mktTitle:'传统市场',ytNoKey:'在设置中填入YouTube API密钥即可显示热门美食视频',ytPopular:'热门视频',nvNoKey:'在服务器.env填入NAVER_ID/NAVER_SECRET后显示',nvTitle:'博客评论最多的美食',keyIssue:'获取',keyGmapNote:'(多语言地图)',keyGmapHelp:'① 打开链接 → ② 启用"Maps JavaScript API" → ③ 凭据 → 创建API密钥 → ④ 粘贴AIza…密钥',keyYtNote:'(YouTube美食)',keyYtHelp:'① 启用"YouTube Data API v3" → ② 凭据 → 创建API密钥 → ③ 粘贴',keyNaverNote:'🟢 Naver美食需在服务器.env中填写NAVER_ID/NAVER_SECRET。',navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票确认·预订:',railOpen:'有App则打开App，没有则跳转安装页',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
+Object.assign(T.ko,{rentalCta:'렌터카 예약',mktTitle:'전통시장',ytNoKey:'설정 → YouTube API 키를 넣으면 인기 맛집 영상이 표시됩니다',ytPopular:'인기 영상',nvNoKey:'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다',nvTitle:'블로그 리뷰 많은 맛집',keyIssue:'발급',keyGmapNote:'(다국어 지도)',keyGmapHelp:'① 링크 열기 → ② "Maps JavaScript API" 사용 설정 → ③ 사용자 인증정보 → API 키 만들기 → ④ AIza…로 시작하는 키 복사해 붙여넣기',keyYtNote:'(유튜브 맛집)',keyYtHelp:'① 링크에서 "YouTube Data API v3" 사용 설정 → ② 사용자 인증정보 → API 키 만들기 → ③ 붙여넣기',keyNaverNote:'🟢 네이버 맛집은 보안상 서버(.env)에 NAVER_ID/NAVER_SECRET로 넣어야 합니다.',navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석 확인·예매',railOpen:'앱이 있으면 앱으로, 없으면 설치 화면으로 연결',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
+Object.assign(T.en,{rentalCta:'Rent a car',mktTitle:'Traditional markets',ytNoKey:'Add a YouTube API key in Settings to see popular food videos',ytPopular:'popular',nvNoKey:'Add NAVER_ID/NAVER_SECRET to server .env to enable',nvTitle:'Most-reviewed restaurants (blogs)',keyIssue:'Get key',keyGmapNote:'(multilingual map)',keyGmapHelp:'① Open link → ② Enable "Maps JavaScript API" → ③ Credentials → Create API key → ④ Paste the AIza… key',keyYtNote:'(YouTube food)',keyYtHelp:'① Enable "YouTube Data API v3" → ② Credentials → Create API key → ③ Paste',keyNaverNote:'🟢 Naver food needs NAVER_ID/NAVER_SECRET in server .env (secret must stay server-side).',navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & book:',railOpen:'Opens the app if installed, else the install page',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
+Object.assign(T.ja,{rentalCta:'レンタカー予約',mktTitle:'伝統市場',ytNoKey:'設定でYouTube APIキーを入れると人気グルメ動画が表示されます',ytPopular:'人気動画',nvNoKey:'サーバー.envにNAVER_ID/NAVER_SECRETを入れると表示',nvTitle:'ブログレビューが多いグルメ',keyIssue:'発行',keyGmapNote:'(多言語地図)',keyGmapHelp:'① リンクを開く → ②「Maps JavaScript API」を有効化 → ③ 認証情報 → APIキー作成 → ④ AIza…キーを貼付',keyYtNote:'(YouTubeグルメ)',keyYtHelp:'①「YouTube Data API v3」を有効化 → ② 認証情報 → APIキー作成 → ③ 貼付',keyNaverNote:'🟢 Naverグルメはサーバー(.env)にNAVER_ID/NAVER_SECRETが必要です。',navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席確認・予約:',railOpen:'アプリがあればアプリ、なければインストール画面へ',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
+Object.assign(T.zh,{rentalCta:'租车预订',mktTitle:'传统市场',ytNoKey:'在设置中填入YouTube API密钥即可显示热门美食视频',ytPopular:'热门视频',nvNoKey:'在服务器.env填入NAVER_ID/NAVER_SECRET后显示',nvTitle:'博客评论最多的美食',keyIssue:'获取',keyGmapNote:'(多语言地图)',keyGmapHelp:'① 打开链接 → ② 启用"Maps JavaScript API" → ③ 凭据 → 创建API密钥 → ④ 粘贴AIza…密钥',keyYtNote:'(YouTube美食)',keyYtHelp:'① 启用"YouTube Data API v3" → ② 凭据 → 创建API密钥 → ③ 粘贴',keyNaverNote:'🟢 Naver美食需在服务器.env中填写NAVER_ID/NAVER_SECRET。',navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票确认·预订:',railOpen:'有App则打开App，没有则跳转安装页',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);
@@ -715,6 +742,7 @@ $('#addDest').onclick=()=>{const i=document.createElement('input');i.className='
 $('#mapToggle').onclick=()=>{document.querySelector('main').classList.toggle('big');setTimeout(()=>{if(!map)return;if(mapEngine==='kakao')map.relayout();else if(mapEngine==='google')google.maps.event.trigger(map,'resize');},250);};
 
 buildMenu();renderDash();loadMap();applyI18n();applyPref();
+(function(){const r=document.getElementById('rentalCta');if(r&&MONEY.rentalUrl)r.href=MONEY.rentalUrl;initAds();})();
 // 언어 변경 새로고침 후 검색값 복원 → 지도 준비되면 자동 재검색
 (function(){const pr=store.get('pendingRun');if(!pr)return;store.set('pendingRun','');
   try{const d=JSON.parse(pr);$('#origin').value=d.origin||'';

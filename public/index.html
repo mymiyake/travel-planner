@@ -433,31 +433,39 @@ async function loadTour(id,ctid){try{const r=await fetch(`/api/tour?lat=${destLa
   const j=await r.json();data[id]=j.list||[];}catch(e){data[id]=[];}}
 
 /* ---------- 기능별 렌더 ---------- */
+function fetchJSON(url,timeoutMs=20000){
+  const ctrl=new AbortController();
+  const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+  return fetch(url,{signal:ctrl.signal})
+    .then(r=>r.json())
+    .catch(()=>({error:'NETWORK'}))
+    .finally(()=>clearTimeout(tid));
+}
 function renderFeat(id,target){
   const el=document.getElementById(target);if(!el)return;
   const f=FEAT[id];
-  if(!f.ok){el.innerHTML='<div class="empty">곧 제공됩니다(API 사용신청 진행 예정).</div>';return;}
-  if(!searched){el.innerHTML='<div class="empty">먼저 출발지·목적지를 검색하세요</div>';return;}
+  if(!f.ok){el.innerHTML=`<div class="empty">${t('comingSoon')}</div>`;return;}
+  if(!searched){el.innerHTML=`<div class="empty">${t('needSearchDest')}</div>`;return;}
   if(f.kind==='gas')return el.innerHTML=renderGas();
   if(f.kind==='tour')return el.innerHTML=renderTour(id);
   if(f.kind==='airport')return renderAirport(el);
   if(f.kind==='widget')return window[f.fn](el);
 }
 function renderGas(){
-  const arr=data.gas||[];if(!arr.length)return '<div class="empty">주유소 없음</div>';
+  const arr=data.gas||[];if(!arr.length)return `<div class="empty">${t('noGas')}</div>`;
   return arr.slice(0,15).map((it,i)=>`<div class="card" onclick="focusOn(${it.lat},${it.lng},'${esc(it.name)}')"><div class="body"><div class="top">
-    <span class="name">${i===0?'<span class="badge b-cheap">최저가</span>':''}${it.name}</span>
-    <span class="price" style="color:var(--gas)">${it.price.toLocaleString()}원</span></div>
+    <span class="name">${i===0?`<span class="badge b-cheap">${t('cheap')}</span>`:''}${it.name}</span>
+    <span class="price" style="color:var(--gas)">${it.price.toLocaleString()}${t('won')}</span></div>
     <div class="meta">${brand(it.brand)} · ${Math.round(it.distance)}m</div></div></div>`).join('');
 }
 function renderTour(id){
   let arr=(data[id]||[]).slice();
-  if(!arr.length){let m='결과 없음';if(id==='stay')m='관광공사 등록 숙소 없음<br><span style="font-size:10px">※ 야놀자·여기어때 등 예약숙소는 별도 제휴 API 필요</span>';return `<div class="empty">${m}</div>`;}
+  if(!arr.length){let m=t('noResult');if(id==='stay')m=t('noStay');return `<div class="empty">${m}</div>`;}
   arr.sort((a,b)=>(isSponsor(b.name)?1:0)-(isSponsor(a.name)?1:0));
   const ticketable=['spot','leisure','culture','festival'].includes(id);
-  let head='';if(id==='stay')head='<div class="empty" style="text-align:left;padding:0 0 8px">ℹ️ 관광공사 등록 숙소만 표시(관광호텔·콘도 등)</div>';
+  let head='';if(id==='stay')head=`<div class="empty" style="text-align:left;padding:0 0 8px">ℹ️ ${t('stayNote')}</div>`;
   return head+arr.map(it=>{
-    const spon=isSponsor(it.name)?'<span class="badge b-spon">추천</span>':'';
+    const spon=isSponsor(it.name)?`<span class="badge b-spon">${t('sponBadge')}</span>`:'';
     const tkt=ticketable?`<a class="tktbtn" href="${klookUrl(it.name)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Klook 예매">🎟️</a>`:'';
     return `<div class="card" onclick="focusOn(${it.lat},${it.lng},'${esc(it.name)}')">${it.img?`<img src="${it.img}" onerror="this.style.display='none'">`:''}
     <div class="body"><div class="top"><span class="name">${spon}${it.name}</span>${tkt}</div>
@@ -466,66 +474,66 @@ function renderTour(id){
 const owIcon=c=>`https://openweathermap.org/img/wn/${c}@2x.png`;
 const aqiColor=a=>({1:'#22c55e',2:'#84cc16',3:'#f59e0b',4:'#ef4444',5:'#a855f7'})[a]||'#555';
 let wxCache=null;
-function getWx(){if(wxCache)return wxCache;wxCache=fetch(`/api/weather?lat=${destLatLng.lat}&lng=${destLatLng.lng}&lang=${OWLANG[curLang]}`).then(r=>r.json());return wxCache;}
-function wWeather(el){el.innerHTML='<div class="sub">불러오는 중…</div>';getWx().then(w=>{if(w.error)return el.innerHTML='<div class="empty">실패</div>';
+function getWx(){if(wxCache)return wxCache;wxCache=fetchJSON(`/api/weather?lat=${destLatLng.lat}&lng=${destLatLng.lng}&lang=${OWLANG[curLang]}`);return wxCache;}
+function wWeather(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;getWx().then(w=>{if(w.error)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
   el.innerHTML=`<div class="wt">🌤️ ${w.city||''}</div><div class="wx"><img src="${owIcon(w.icon)}"><span class="big">${Math.round(w.temp)}°</span></div>
-  <div class="sub">${w.desc||''} · 체감 ${Math.round(w.feels)}° · 습도 ${w.humidity}% · 바람 ${w.wind}m/s</div>`;});}
-function wAir(el){el.innerHTML='<div class="sub">불러오는 중…</div>';getWx().then(w=>{if(w.error)return el.innerHTML='<div class="empty">실패</div>';
-  el.innerHTML=`<div class="wt">💨 대기질</div><span class="aqi-pill" style="background:${aqiColor(w.aqi)};color:#0a0a0a">${w.aqiText}</span>
-  <div class="sub">초미세 ${w.pm25??'-'} · 미세 ${w.pm10??'-'} ㎍/㎥</div>`;});}
-function wForecast(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/forecast?lat=${destLatLng.lat}&lng=${destLatLng.lng}&lang=${OWLANG[curLang]}`).then(r=>r.json()).then(f=>{
-  if(f.error||!f.list)return el.innerHTML='<div class="empty">실패</div>';
+  <div class="sub">${w.desc||''} · ${t('feelsLike')} ${Math.round(w.feels)}° · ${t('humidity')} ${w.humidity}% · ${t('wind')} ${w.wind}m/s</div>`;});}
+function wAir(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;getWx().then(w=>{if(w.error)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
+  el.innerHTML=`<div class="wt">💨 ${t('airTitle')}</div><span class="aqi-pill" style="background:${aqiColor(w.aqi)};color:#0a0a0a">${w.aqiText}</span>
+  <div class="sub">${t('pm25')} ${w.pm25??'-'} · ${t('pm10')} ${w.pm10??'-'} ㎍/㎥</div>`;});}
+function wForecast(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/forecast?lat=${destLatLng.lat}&lng=${destLatLng.lng}&lang=${OWLANG[curLang]}`).then(f=>{
+  if(f.error||!f.list)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
   el.innerHTML=`<div class="fc-row">`+f.list.map(x=>`<div class="fc">${x.time.slice(11,16)}<img src="${owIcon(x.icon)}"><b>${Math.round(x.temp)}°</b>${x.pop?`<div style="color:var(--accent)">☔${Math.round(x.pop*100)}%</div>`:''}</div>`).join('')+`</div>`;});}
-function wTransit(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/transit?oLat=${originLatLng.lat}&oLng=${originLatLng.lng}&dLat=${destLatLng.lat}&dLng=${destLatLng.lng}`).then(r=>r.json()).then(t=>{
-  if(t.error||!t.paths)return el.innerHTML='<div class="empty">경로 없음(도시간 이동은 미지원)</div>';
-  el.innerHTML=t.paths.map(p=>`<div class="trow"><span>${p.type} · 환승 ${p.transfers}</span><span><b>${p.totalTime}분</b> · ${p.payment.toLocaleString()}원</span></div>`).join('');});}
-function wGasAvg(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/gas-avg`).then(r=>r.json()).then(g=>{
-  if(g.error||!g.list)return el.innerHTML='<div class="empty">실패</div>';
-  el.innerHTML=g.list.map(x=>`<div class="trow"><span>${x.name}</span><span><b>${x.price.toLocaleString()}원</b> <span style="color:var(--muted)">${x.diff}</span></span></div>`).join('');});}
+function wTransit(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/transit?oLat=${originLatLng.lat}&oLng=${originLatLng.lng}&dLat=${destLatLng.lat}&dLng=${destLatLng.lng}`).then(j=>{
+  if(j.error||!j.paths)return el.innerHTML=`<div class="empty">${t('noTransit')}</div>`;
+  el.innerHTML=j.paths.map(p=>`<div class="trow"><span>${p.type} · ${t('transfers')} ${p.transfers}</span><span><b>${p.totalTime}${t('minUnit')}</b>${p.distance?` · ${Math.round(p.distance/1000)}km`:''}</span></div>`).join('');});}
+function wGasAvg(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/gas-avg`).then(g=>{
+  if(g.error||!g.list)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
+  el.innerHTML=g.list.map(x=>`<div class="trow"><span>${x.name}</span><span><b>${x.price.toLocaleString()}${t('won')}</b> <span style="color:var(--muted)">${x.diff}</span></span></div>`).join('');});}
 const ZCODE={'서울':'11','부산':'26','대구':'27','인천':'28','광주':'29','대전':'30','울산':'31','세종':'36','경기':'41','강원':'42','충청북':'43','충북':'43','충청남':'44','충남':'44','전라북':'45','전북':'45','전라남':'46','전남':'46','경상북':'47','경북':'47','경상남':'48','경남':'48','제주':'50'};
 function zcodeOf(addr){for(const k in ZCODE)if((addr||'').includes(k))return ZCODE[k];return '';}
-function wEv(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/ev?lat=${destLatLng.lat}&lng=${destLatLng.lng}&zcode=${zcodeOf(window.destAddr)}`).then(r=>r.json()).then(j=>{
-  if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 충전소 없음</div>';
+function wEv(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/ev?lat=${destLatLng.lat}&lng=${destLatLng.lng}&zcode=${zcodeOf(window.destAddr)}`).then(j=>{
+  if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noEv')}</div>`;
   el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}')"><div class="body"><div class="top"><span class="name">🔌 ${x.name}</span><span class="meta">${x.dist}m</span></div><div class="meta">${x.addr||''} · ${x.useTime||''}</div></div></div>`).join('');});}
-function wLpg(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/lpg?lat=${destLatLng.lat}&lng=${destLatLng.lng}`).then(r=>r.json()).then(j=>{
-  if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 LPG 충전소 없음</div>';
+function wLpg(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/lpg?lat=${destLatLng.lat}&lng=${destLatLng.lng}`).then(j=>{
+  if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noLpg')}</div>`;
   el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}')"><div class="body"><div class="top"><span class="name">🛢️ ${x.name}</span><span class="meta">${x.dist}m</span></div><div class="meta">${x.addr||''}${x.tel?' · '+x.tel:''}</div></div></div>`).join('');});}
-function wWxalert(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/wxalert`).then(r=>r.json()).then(j=>{
-  if(j.error)return el.innerHTML='<div class="empty">실패</div>';
-  if(!j.alerts?.length)return el.innerHTML='<div class="empty">현재 발효 중인 기상특보 없음 ☀️</div>';
-  el.innerHTML=`<div class="wt">⚠️ 발효 중인 기상특보 ${j.count}건</div>`+j.alerts.map(a=>`<div class="trow"><span style="color:#f59e0b;font-weight:700">${a.type}</span><span class="sub" style="text-align:right;max-width:60%">${a.area}</span></div>`).join('');});}
-function wTraffic(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/traffic`).then(r=>r.json()).then(j=>{
-  if(j.error)return el.innerHTML='<div class="empty">실패</div>';
-  el.innerHTML=`<div class="wt">🛣️ 고속도로 실시간 통행량</div><div><span class="big">${(j.total||0).toLocaleString()}</span> 대 <span class="sub">(${j.sumTm||'-'}시 기준, TCS 집계)</span></div>`;});}
-function wRestarea(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/restarea`).then(r=>r.json()).then(j=>{
-  if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">실패</div>';
+function wWxalert(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/wxalert`).then(j=>{
+  if(j.error)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
+  if(!j.alerts?.length)return el.innerHTML=`<div class="empty">${t('noWxAlert')}</div>`;
+  el.innerHTML=`<div class="wt">⚠️ ${t('wxAlertTitle')} ${j.count}${t('unitCases')}</div>`+j.alerts.map(a=>`<div class="trow"><span style="color:#f59e0b;font-weight:700">${a.type}</span><span class="sub" style="text-align:right;max-width:60%">${a.area}</span></div>`).join('');});}
+function wTraffic(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/traffic`).then(j=>{
+  if(j.error)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
+  el.innerHTML=`<div class="wt">🛣️ ${t('trafficTitle')}</div><div><span class="big">${(j.total||0).toLocaleString()}</span> ${t('unitVehicles')} <span class="sub">(${j.sumTm||'-'}${t('tcsBase')})</span></div>`;});}
+function wRestarea(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/restarea`).then(j=>{
+  if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
   const seen={};const uniq=j.list.filter(x=>{const k=x.rest+x.food;if(seen[k])return false;seen[k]=1;return true;}).slice(0,10);
-  el.innerHTML=`<div class="wt">🍜 휴게소 추천 메뉴</div>`+uniq.map(x=>`<div class="trow"><span>${x.rest.replace('휴게소','')} · ${x.food}</span><span><b>${x.cost.toLocaleString()}원</b></span></div>`).join('');});}
-function nearList(el,url,icon,color){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(url).then(r=>r.json()).then(j=>{
-  if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변에 없음(반경 밖일 수 있어요)</div>';
+  el.innerHTML=`<div class="wt">🍜 ${t('restMenuTitle')}</div>`+uniq.map(x=>`<div class="trow"><span>${x.rest.replace('휴게소','')} · ${x.food}</span><span><b>${x.cost.toLocaleString()}${t('won')}</b></span></div>`).join('');});}
+function nearList(el,url,icon,color){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(url).then(j=>{
+  if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noNearby')}</div>`;
   const list=j.list.slice().sort((a,b)=>(isSponsor(b.name)?1:0)-(isSponsor(a.name)?1:0));
-  el.innerHTML=list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')">${x.img?`<img src="${x.img}" onerror="this.style.display='none'">`:''}<div class="body"><div class="top"><span class="name">${isSponsor(x.name)?'<span class="badge b-spon">추천</span>':''}${icon} ${x.name}</span><span class="meta">${x.dist?Math.round(x.dist/1000)+'km':''}</span></div><div class="meta">${x.addr||''}${x.type?' · '+x.type:''}${x.kind?' · '+x.kind:''}</div></div></div>`).join('');});}
+  el.innerHTML=list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')">${x.img?`<img src="${x.img}" onerror="this.style.display='none'">`:''}<div class="body"><div class="top"><span class="name">${isSponsor(x.name)?`<span class="badge b-spon">${t('sponBadge')}</span>`:''}${icon} ${x.name}</span><span class="meta">${x.dist?Math.round(x.dist/1000)+'km':''}</span></div><div class="meta">${x.addr||''}${x.type?' · '+x.type:''}${x.kind?' · '+x.kind:''}</div></div></div>`).join('');});}
 const SIDO={'서울':'서울특별시','부산':'부산광역시','대구':'대구광역시','인천':'인천광역시','광주':'광주광역시','대전':'대전광역시','울산':'울산광역시','세종':'세종특별자치시','경기':'경기도','강원':'강원특별자치도','충북':'충청북도','충청북':'충청북도','충남':'충청남도','충청남':'충청남도','전북':'전북특별자치도','전라북':'전북특별자치도','전남':'전라남도','전라남':'전라남도','경북':'경상북도','경상북':'경상북도','경남':'경상남도','경상남':'경상남도','제주':'제주특별자치도'};
 function parseRegion(addr){addr=addr||'';let s1='';for(const k in SIDO)if(addr.startsWith(k)){s1=SIDO[k];break;}
   const toks=addr.split(/\s+/);const s2=toks.find(t=>/(구|군|시)$/.test(t)&&!Object.keys(SIDO).some(k=>t.startsWith(k)))||toks[1]||'';
   return {s1,s2};}
 function wEr(el){const {s1,s2}=parseRegion(window.destAddr);
-  if(!s1||!s2)return el.innerHTML='<div class="empty">목적지 지역을 특정할 수 없어요</div>';
-  el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/er?stage1=${encodeURIComponent(s1)}&stage2=${encodeURIComponent(s2)}`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${s1} ${s2} 응급실 데이터 없음</div>`;
-    el.innerHTML=`<div class="wt">🏥 ${s1} ${s2} 응급실 실시간 병상</div>`+j.list.slice(0,8).map(x=>{const c=x.beds>=5?'#22c55e':x.beds>=1?'#f59e0b':'#ef4444';return `<div class="trow"><span>${x.name}${x.tel?` <span style="color:var(--muted)">${x.tel}</span>`:''}</span><span style="color:${c};font-weight:700">병상 ${x.beds}</span></div>`}).join('');});}
+  if(!s1||!s2)return el.innerHTML=`<div class="empty">${t('noDestRegion')}</div>`;
+  el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/er?stage1=${encodeURIComponent(s1)}&stage2=${encodeURIComponent(s2)}`).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${s1} ${s2} ${t('noErData')}</div>`;
+    el.innerHTML=`<div class="wt">🏥 ${s1} ${s2} ${t('erBedsTitle')}</div>`+j.list.slice(0,8).map(x=>{const c=x.beds>=5?'#22c55e':x.beds>=1?'#f59e0b':'#ef4444';return `<div class="trow"><span>${x.name}${x.tel?` <span style="color:var(--muted)">${x.tel}</span>`:''}</span><span style="color:${c};font-weight:700">${t('erBeds')} ${x.beds}</span></div>`}).join('');});}
 const PHARM_SIDO={'서울':'110000','부산':'210000','대구':'230000','인천':'220000','광주':'240000','대전':'250000','울산':'260000','세종':'410000','경기':'310000','강원':'320000','충청북':'330000','충북':'330000','충청남':'340000','충남':'340000','전라북':'350000','전북':'350000','전라남':'360000','전남':'360000','경상북':'370000','경북':'370000','경상남':'380000','경남':'380000','제주':'390000'};
 function wPharm(el){const {s1}=parseRegion(window.destAddr);let code='';for(const k in PHARM_SIDO)if((s1||'').includes(k)){code=PHARM_SIDO[k];break;}
-  if(!code)return el.innerHTML='<div class="empty">목적지 시도를 특정할 수 없어요</div>';
-  el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/pharm?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sidoCd=${code}`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 약국 없음(10km)</div>';
+  if(!code)return el.innerHTML=`<div class="empty">${t('noDestSido')}</div>`;
+  el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/pharm?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sidoCd=${code}`).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noPharm')}</div>`;
     el.innerHTML=j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">💊 ${x.name}</span><span class="meta">${x.dist}m</span></div><div class="meta">${x.addr||''}${x.tel?' · '+x.tel:''}</div></div></div>`).join('');});}
-function wDuty(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/duty`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">실패</div>';
-    el.innerHTML=`<div class="wt">🛍️ 제주공항 JDC 면세점 ${j.count}개 매장</div>`+j.list.slice(0,15).map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">${x.cat||''}</span></span><span class="sub">${x.open?x.open.replace(/(\\d{2})(\\d{2})/,'$1:$2')+'~'+(x.close||'').replace(/(\\d{2})(\\d{2})/,'$1:$2'):''}</span></div>`).join('');});}
+function wDuty(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/duty`).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
+    el.innerHTML=`<div class="wt">🛍️ ${t('dutyTitle')} ${j.count}${t('unitStores')}</div>`+j.list.slice(0,15).map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">${x.cat||''}</span></span><span class="sub">${x.open?x.open.replace(/(\d{2})(\d{2})/,'$1:$2')+'~'+(x.close||'').replace(/(\d{2})(\d{2})/,'$1:$2'):''}</span></div>`).join('');});}
 const BUS_TERMS=[['NAEK010','서울경부'],['NAEK100','인천'],['NAEK120','성남'],['NAEK130','안성'],['NAEK140','여주'],['NAEK150','용인'],['NAEK160','이천'],['NAEK180','평택'],['NAEK200','강릉'],['NAEK210','동해'],['NAEK220','삼척'],['NAEK230','속초'],['NAEK240','원주'],['NAEK270','양양'],['NAEK300','대전복합'],['NAEK310','천안'],['NAEK320','공주'],['NAEK330','금산'],['NAEK340','아산온양'],['NAEK350','조치원'],['NAEK360','유성복합'],['NAEK370','논산'],['NAEK380','연무대'],['NAEK390','내포'],['NAEK400','청주(고속)'],['NAEK440','황간'],['NAEK450','제천'],['NAEK500','광주(유·스퀘어)'],['NAEK510','여수'],['NAEK520','광양'],['NAEK700','부산'],['NAEK710','창원'],['NAEK730','통영'],['NAEK810','구미'],['NAEK830','포항'],['NAEK840','안동'],['NAEK850','점촌']].sort((a,b)=>a[1].localeCompare(b[1],'ko'));
 function wBus(el){const opts=BUS_TERMS.map(t=>`<option value="${t[0]}">${t[1]}</option>`).join('');const uid=Math.random().toString(36).slice(2,6);
   el.innerHTML=`<div class="busctl" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
@@ -534,11 +542,11 @@ function wBus(el){const opts=BUS_TERMS.map(t=>`<option value="${t[0]}">${t[1]}</
     <button class="mini" onclick="loadBus('${uid}')" style="cursor:pointer">🔍 ${t('busQ')||'조회'}</button></div><div id="bo-${uid}"><div class="sub">${t('busHint')||'출발·도착 터미널을 고르고 조회하세요'}</div></div>`;
   const bd=el.querySelector('#bd-'+uid);if(bd)bd.value='NAEK300';}
 function loadBus(uid){const dep=document.getElementById('bd-'+uid).value,arr=document.getElementById('ba-'+uid).value,out=document.getElementById('bo-'+uid);
-  if(dep===arr)return out.innerHTML='<div class="empty">출발·도착이 같아요</div>';
-  out.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/bus?dep=${dep}&arr=${arr}`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return out.innerHTML='<div class="empty">해당 노선 운행 정보 없음</div>';
-    out.innerHTML=`<div class="wt">🚌 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+'원':''}</span></div>`).join('');});}
+  if(dep===arr)return out.innerHTML=`<div class="empty">${t('sameDepArr')}</div>`;
+  out.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/bus?dep=${dep}&arr=${arr}`).then(j=>{
+    if(j.error||!j.list?.length)return out.innerHTML=`<div class="empty">${t('noBusRoute')}</div>`;
+    out.innerHTML=`<div class="wt">🚌 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+t('won'):''}</span></div>`).join('');});}
 const RAIL={korail:{and:'com.korail.talk',ios:'1000558562',web:'https://www.letskorail.com/ebizbf/EbizBfTicketSearch.do'},
             srt:{and:'kr.co.srail.newapp',ios:'1350286957',web:'https://etk.srail.kr/hpg/hra/01/selectScheduleList.do'}};
 function openRail(which){const A=RAIL[which];if(!A)return;const ua=navigator.userAgent;
@@ -551,28 +559,28 @@ function foodQuery(){return (window.destAddr||'').split(/\s+/).filter(Boolean).s
 function wYtFood(el){const key=store.get('youtube_key');
   if(!key)return el.innerHTML=`<div class="empty">⚙️ ${t('ytNoKey')||'설정 → YouTube API 키를 넣으면 인기 맛집 영상이 표시됩니다'}</div>`;
   const q=(foodQuery()||'한국')+' 맛집';
-  el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&order=viewCount&regionCode=KR&relevanceLanguage=${curLang}&q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}`)
-   .then(r=>r.json()).then(j=>{
-     if(j.error||!j.items?.length)return el.innerHTML=`<div class="empty">${j.error?'키/쿼터 확인: '+(j.error.message||'').slice(0,50):'영상 없음'}</div>`;
+  el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&order=viewCount&regionCode=KR&relevanceLanguage=${curLang}&q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}`)
+   .then(j=>{
+     if(j.error||!j.items?.length)return el.innerHTML=`<div class="empty">${j.error?t('checkKeyQuota')+': '+(j.error.message||'').slice(0,50):t('noVideo')}</div>`;
      el.innerHTML=`<div class="wt">▶️ "${q}" ${t('ytPopular')||'인기 영상'}</div>`+j.items.map(it=>{const v=it.id.videoId,s=it.snippet;return `<a class="card" href="https://www.youtube.com/watch?v=${v}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">${s.thumbnails?.medium?.url?`<img src="${s.thumbnails.medium.url}" onerror="this.style.display='none'">`:''}<div class="body"><div class="top"><span class="name">${ytDecode(s.title)}</span></div><div class="meta">▶️ ${ytDecode(s.channelTitle)}</div></div></a>`}).join('');});}
-function wNvFood(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/naver-food?q=${encodeURIComponent(foodQuery())}`).then(r=>r.json()).then(j=>{
+function wNvFood(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/naver-food?q=${encodeURIComponent(foodQuery())}`).then(j=>{
     if(j.error==='NO_KEY')return el.innerHTML=`<div class="empty">🟢 ${t('nvNoKey')||'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다'}</div>`;
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">맛집 없음</div>';
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noFood')}</div>`;
     el.innerHTML=`<div class="wt">🟢 ${t('nvTitle')||'블로그 리뷰 많은 맛집'}</div>`+j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">${x.name}</span><span class="meta">📝${x.reviews.toLocaleString()}</span></div><div class="meta">${x.cat||''}${x.addr?' · '+x.addr:''}</div></div></div>`).join('');});}
 function wSpeedcam(el){const {s1}=parseRegion(window.destAddr);
-  if(!s1||!destLatLng)return el.innerHTML='<div class="empty">목적지를 먼저 검색하세요</div>';
-  el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/speedcam?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sido=${encodeURIComponent(s1)}`).then(r=>r.json()).then(j=>{
+  if(!s1||!destLatLng)return el.innerHTML=`<div class="empty">${t('needSearchDest')}</div>`;
+  el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/speedcam?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sido=${encodeURIComponent(s1)}`).then(j=>{
     if(j.error==='NO_KEY')return el.innerHTML=`<div class="empty">🚨 ${t('dataNoKey')||'서버 .env에 DATA_GO_KR_KEY를 넣으면 표시됩니다'}</div>`;
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 단속카메라 없음(20km)</div>';
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noSpeedcam')}</div>`;
     el.innerHTML=`<div class="wt">🚨 ${t('scamTitle')||'과속·신호 단속카메라'}</div>`+j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}')"><div class="body"><div class="top"><span class="name">🚨 ${x.name}${x.kind?` <span style="color:var(--muted);font-size:10px">${x.kind}</span>`:''}</span><span class="meta">${x.speed?`<b style="color:#ef4444">${x.speed}km/h</b> · `:''}${x.dist?Math.round(x.dist/100)/10+'km':''}</span></div></div></div>`).join('');});}
 function wParking(el){
-  if(!destLatLng)return el.innerHTML='<div class="empty">목적지를 먼저 검색하세요</div>';
-  el.innerHTML='<div class="sub">🅿️ 주변 주차장 검색 중…</div>';
-  fetch(`/api/parking?lat=${destLatLng.lat}&lng=${destLatLng.lng}&radius=3000`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 3km 내 주차장 정보가 없습니다.</div>';
+  if(!destLatLng)return el.innerHTML=`<div class="empty">${t('needSearchDest')}</div>`;
+  el.innerHTML=`<div class="sub">🅿️ ${t('searchingPrk')}</div>`;
+  fetchJSON(`/api/parking?lat=${destLatLng.lat}&lng=${destLatLng.lng}&radius=3000`).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noParking')}</div>`;
     el.innerHTML=`<div class="wt">🅿️ ${t('prkTitle')||'주변 주차장 목록'}</div>`+j.list.map(x=>`
       <div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')">
         <div class="body">
@@ -582,31 +590,31 @@ function wParking(el){
           </div>
           <div class="meta">${x.addr||x.category||''}</div>
           <div style="margin-top:6px;display:flex;gap:6px">
-            <button style="padding:3px 8px;font-size:11px;background:var(--accent);color:#fff;border:0;border-radius:6px;cursor:pointer" onclick="event.stopPropagation();navToPlace(${x.lat},${x.lng},'${esc(x.name)}')">🧭 안내</button>
-            <a href="https://map.kakao.com/link/search/${encodeURIComponent(x.name)}" target="_blank" rel="noopener" style="padding:3px 8px;font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;text-decoration:none" onclick="event.stopPropagation()">상세·예약 ›</a>
+            <button style="padding:3px 8px;font-size:11px;background:var(--accent);color:#fff;border:0;border-radius:6px;cursor:pointer" onclick="event.stopPropagation();navToPlace(${x.lat},${x.lng},'${esc(x.name)}')">🧭 ${t('navGuide')}</button>
+            <a href="https://map.kakao.com/link/search/${encodeURIComponent(x.name)}" target="_blank" rel="noopener" style="padding:3px 8px;font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;text-decoration:none" onclick="event.stopPropagation()">${t('detailReserve')} ›</a>
           </div>
         </div>
       </div>
     `).join('');
-  }).catch(()=>el.innerHTML='<div class="empty">주차장 정보를 불러오지 못했습니다.</div>');
+  });
 }
 function navToPlace(lat,lng,name){window.navTarget={lat,lng,name,addr:name};navTo(store.get('prefNav')||'kakaomap');}
 function wParkcam(el){const {s1}=parseRegion(window.destAddr);
 
-  if(!s1||!destLatLng)return el.innerHTML='<div class="empty">목적지를 먼저 검색하세요</div>';
-  el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/parkcam?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sido=${encodeURIComponent(s1)}`).then(r=>r.json()).then(j=>{
+  if(!s1||!destLatLng)return el.innerHTML=`<div class="empty">${t('needSearchDest')}</div>`;
+  el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/parkcam?lat=${destLatLng.lat}&lng=${destLatLng.lng}&sido=${encodeURIComponent(s1)}`).then(j=>{
     if(j.error==='NO_KEY')return el.innerHTML=`<div class="empty">🅿️ ${t('dataNoKey')||'서버 .env에 DATA_GO_KR_KEY를 넣으면 표시됩니다'}</div>`;
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">주변 주정차단속 없음(15km)</div>';
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noParkcam')}</div>`;
     el.innerHTML=`<div class="wt">🅿️ ${t('pcamTitle')||'주정차 단속 CCTV'}</div>`+j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">🅿️ ${x.name}</span><span class="meta">${x.dist?Math.round(x.dist/100)/10+'km':''}</span></div><div class="meta">${x.addr||''}${x.dir?' · '+x.dir:''}</div></div></div>`).join('');});}
-function wMarket(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/market?q=${encodeURIComponent(foodQuery())}`).then(r=>r.json()).then(j=>{
+function wMarket(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/market?q=${encodeURIComponent(foodQuery())}`).then(j=>{
     if(j.error==='NO_KEY')return el.innerHTML=`<div class="empty">🟢 ${t('nvNoKey')||'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다'}</div>`;
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">전통시장 없음</div>';
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noMarket')}</div>`;
     el.innerHTML=`<div class="wt">🏪 ${t('mktTitle')||'전통시장'}</div>`+j.list.map(x=>`<div class="card" onclick="focusOn(${x.lat},${x.lng},'${esc(x.name)}','${esc(x.addr||'')}')"><div class="body"><div class="top"><span class="name">🏪 ${x.name}</span></div><div class="meta">${x.addr||''}</div></div></div>`).join('');});}
 let TRAIN_STNS=null;
 function wTrain(el){const uid=Math.random().toString(36).slice(2,6);
-  el.innerHTML=`<div class="sub">${t('busHint')||'역 목록 불러오는 중…'}</div>`;
+  el.innerHTML=`<div class="sub">${t('loadingStations')}</div>`;
   const build=(stns)=>{const opts=stns.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
     el.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
       <select class="mini" id="td-${uid}">${opts}</select><span>→</span>
@@ -621,40 +629,40 @@ function wTrain(el){const uid=Math.random().toString(36).slice(2,6);
     const pick=(sel,nm)=>{const o=[...document.getElementById(sel).options].find(o=>o.textContent===nm);if(o)document.getElementById(sel).value=o.value;};
     pick('td-'+uid,'서울');pick('ta-'+uid,'부산');};
   if(TRAIN_STNS)return build(TRAIN_STNS);
-  fetch('/api/train-stations').then(r=>r.json()).then(j=>{if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">역 목록 실패</div>';TRAIN_STNS=j.list;build(j.list);});}
+  fetchJSON('/api/train-stations').then(j=>{if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('failStationList')}</div>`;TRAIN_STNS=j.list;build(j.list);});}
 function loadTrain(uid){const dep=document.getElementById('td-'+uid).value,arr=document.getElementById('ta-'+uid).value,out=document.getElementById('to-'+uid);
-  if(dep===arr)return out.innerHTML='<div class="empty">출발·도착이 같아요</div>';
-  out.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/train?dep=${dep}&arr=${arr}`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return out.innerHTML='<div class="empty">해당 구간 열차 없음(직통만 조회)</div>';
-    out.innerHTML=`<div class="wt">🚆 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+'원':''}</span></div>`).join('');});}
-function wTrail(el){el.innerHTML='<div class="sub">불러오는 중…</div>';
-  fetch(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(r=>r.json()).then(j=>{
-    if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">둘레길 없음</div>';
-    el.innerHTML=`<div class="wt">🥾 두루누비 둘레길 코스</div>`+j.list.map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">난이도${x.level||'-'}</span></span><span><b>${x.dist}km</b> · ${Math.round(x.hour/60)||'-'}h</span></div>`).join('');});}
+  if(dep===arr)return out.innerHTML=`<div class="empty">${t('sameDepArr')}</div>`;
+  out.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/train?dep=${dep}&arr=${arr}`).then(j=>{
+    if(j.error||!j.list?.length)return out.innerHTML=`<div class="empty">${t('noTrainRoute')}</div>`;
+    out.innerHTML=`<div class="wt">🚆 ${j.list[0].from} → ${j.list[0].to} (${j.date.slice(4,6)}/${j.date.slice(6,8)})</div>`+j.list.map(x=>`<div class="trow"><span><b>${x.dep}</b> → ${x.arr} <span style="color:var(--muted)">${x.grade}</span></span><span>${x.charge?x.charge.toLocaleString()+t('won'):''}</span></div>`).join('');});}
+function wTrail(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  fetchJSON(`/api/trail?region=${encodeURIComponent(window.destAddr||'')}`).then(j=>{
+    if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('noTrail')}</div>`;
+    el.innerHTML=`<div class="wt">🥾 ${t('trailTitle')}</div>`+j.list.map(x=>`<div class="trow"><span>${x.name} <span style="color:var(--muted)">${t('difficulty')}${x.level||'-'}</span></span><span><b>${x.dist}km</b> · ${Math.round(x.hour/60)||'-'}h</span></div>`).join('');});}
 function wGolf(el){nearList(el,`/api/golf?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'⛳');}
 function wFish(el){nearList(el,`/api/fish?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'🎣');}
 function wCamping(el){nearList(el,`/api/camping?lat=${destLatLng.lat}&lng=${destLatLng.lng}`,'🏕️');}
-function wH2(el){el.innerHTML='<div class="sub">불러오는 중…</div>';fetch(`/api/h2`).then(r=>r.json()).then(j=>{
-  if(j.error||!j.list?.length)return el.innerHTML='<div class="empty">실패</div>';
+function wH2(el){el.innerHTML=`<div class="sub">${t('loading')}</div>`;fetchJSON(`/api/h2`).then(j=>{
+  if(j.error||!j.list?.length)return el.innerHTML=`<div class="empty">${t('fail')}</div>`;
   const open=j.list.filter(s=>/영업중|운영/.test(s.oper));const show=(open.length?open:j.list).slice(0,12);
-  el.innerHTML=`<div class="wt">💧 전국 수소충전소 ${j.count}곳 (${open.length}곳 영업중)</div>`+show.map(s=>`<div class="trow"><span>${s.name.slice(0,18)}</span><span><b>대기 ${s.wait}</b> · ${s.oper}</span></div>`).join('');});}
+  el.innerHTML=`<div class="wt">💧 ${t('h2Title')} ${j.count}${t('unitPlaces')} (${open.length}${t('unitPlaces')} ${t('operating')})</div>`+show.map(s=>`<div class="trow"><span>${s.name.slice(0,18)}</span><span><b>${t('waiting')} ${s.wait}</b> · ${s.oper}</span></div>`).join('');});}
 function renderAirport(el){
   el.innerHTML=`<select class="mini" id="airSel-${Math.random().toString(36).slice(2,6)}" onchange="loadAirport(this)">
-    <option value="ICN|P01">인천공항 T1</option><option value="ICN|P03">인천공항 T2</option>
-    <option value="KAC">전국 공항(김포·제주·김해 등)</option></select><div class="airout"><div class="sub">공항을 선택하세요</div></div>`;
+    <option value="ICN|P01">${t('icnT1')}</option><option value="ICN|P03">${t('icnT2')}</option>
+    <option value="KAC">${t('kacAll')}</option></select><div class="airout"><div class="sub">${t('selectAirport')}</div></div>`;
   loadAirport(el.querySelector('select'));
 }
 function loadAirport(sel){
-  const out=sel.parentElement.querySelector('.airout');out.innerHTML='<div class="sub">불러오는 중…</div>';
-  if(sel.value==='KAC'){fetch('/api/airport-all').then(r=>r.json()).then(a=>{
-    if(a.error||!a.airports?.length)return out.innerHTML=`<div class="sub">${a.error||'데이터 없음'} — 한국공항공사 API 신청 예정</div>`;
-    out.innerHTML='🛫 전국 공항 혼잡도<br>'+a.airports.map(x=>`<div class="trow"><span>${x.name}</span><span class="aqi-pill" style="background:${x.color};color:#0a0a0a">${x.level}</span></div>`).join('');});return;}
+  const out=sel.parentElement.querySelector('.airout');out.innerHTML=`<div class="sub">${t('loading')}</div>`;
+  if(sel.value==='KAC'){fetchJSON('/api/airport-all').then(a=>{
+    if(a.error||!a.airports?.length)return out.innerHTML=`<div class="sub">${a.error||t('noData')} — ${t('kacSoon')}</div>`;
+    out.innerHTML=`🛫 ${t('airportCongestion')}<br>`+a.airports.map(x=>`<div class="trow"><span>${x.name}</span><span class="aqi-pill" style="background:${x.color};color:#0a0a0a">${x.level}</span></div>`).join('');});return;}
   const [,term]=sel.value.split('|');
-  fetch(`/api/airport?terminal=${term}`).then(r=>r.json()).then(a=>{
-    if(a.error||!a.gates?.length)return out.innerHTML='<div class="sub">데이터 없음(운영시간 외일 수 있음)</div>';
+  fetchJSON(`/api/airport?terminal=${term}`).then(a=>{
+    if(a.error||!a.gates?.length)return out.innerHTML=`<div class="sub">${t('noAirportData')}</div>`;
     const busy=a.avgWait>=15?'#ef4444':a.avgWait>=8?'#f59e0b':'#22c55e';
-    out.innerHTML=`평균 대기 <span class="big" style="color:${busy}">${a.avgWait}분</span><div class="gate-grid">`+a.gates.map(g=>`<span class="gate">${g.gate} ${g.waitTime}분</span>`).join('')+`</div>`;});
+    out.innerHTML=`${t('avgWait')} <span class="big" style="color:${busy}">${a.avgWait}${t('minUnit')}</span><div class="gate-grid">`+a.gates.map(g=>`<span class="gate">${g.gate} ${g.waitTime}${t('minUnit')}</span>`).join('')+`</div>`;});
 }
 /* ---------- 지도/내비/유틸 ---------- */
 function drawRoute(){if(!map||!routePath.length)return;
@@ -788,10 +796,14 @@ const T={
     airport:'Flughafen',toilet:'Öffentliche Toiletten',pharm:'Apotheken',er:'Notaufnahme',shelter:'Notunterkünfte',fx:'Wechselkurs',duty:'Duty-Free'}
 };
 Object.assign(T.es, T.en); Object.assign(T.fr, T.en); Object.assign(T.de, T.en);
-Object.assign(T.ko,{prkTitle:'주변 주차장',dataNoKey:'서버 .env에 DATA_GO_KR_KEY(공공데이터포털 Decoding키)를 넣으면 표시됩니다',scamTitle:'과속·신호 단속카메라',pcamTitle:'주정차 단속 CCTV',rentalCta:'렌터카 예약',mktTitle:'전통시장',ytNoKey:'설정 → YouTube API 키를 넣으면 인기 맛집 영상이 표시됩니다',ytPopular:'인기 영상',nvNoKey:'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다',nvTitle:'블로그 리뷰 많은 맛집',keyIssue:'발급',keyGmapNote:'(다국어 지도)',keyGmapHelp:'① 링크 열기 → ② "Maps JavaScript API" 사용 설정 → ③ 사용자 인증정보 → API 키 만들기 → ④ AIza…로 시작하는 키 복사해 붙여넣기',keyYtNote:'(유튜브 맛집)',keyYtHelp:'① 링크에서 "YouTube Data API v3" 사용 설정 → ② 사용자 인증정보 → API 키 만들기 → ③ 붙여넣기',keyNaverNote:'🟢 네이버 맛집은 보안상 서버(.env)에 NAVER_ID/NAVER_SECRET로 넣어야 합니다.',navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석 확인·예매',railOpen:'앱이 있으면 앱으로, 없으면 설치 화면으로 연결',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)'});
-Object.assign(T.en,{prkTitle:'Nearby parking',dataNoKey:'Add DATA_GO_KR_KEY (data.go.kr decoding key) to server .env to enable',scamTitle:'Speed/signal cameras',pcamTitle:'Parking enforcement CCTV',rentalCta:'Rent a car',mktTitle:'Traditional markets',ytNoKey:'Add a YouTube API key in Settings to see popular food videos',ytPopular:'popular',nvNoKey:'Add NAVER_ID/NAVER_SECRET to server .env to enable',nvTitle:'Most-reviewed restaurants (blogs)',keyIssue:'Get key',keyGmapNote:'(multilingual map)',keyGmapHelp:'① Open link → ② Enable "Maps JavaScript API" → ③ Credentials → Create API key → ④ Paste the AIza… key',keyYtNote:'(YouTube food)',keyYtHelp:'① Enable "YouTube Data API v3" → ② Credentials → Create API key → ③ Paste',keyNaverNote:'🟢 Naver food needs NAVER_ID/NAVER_SECRET in server .env (secret must stay server-side).',navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & book:',railOpen:'Opens the app if installed, else the install page',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)'});
-Object.assign(T.ja,{prkTitle:'周辺の駐車場',dataNoKey:'サーバー.envにDATA_GO_KR_KEYを入れると表示されます',scamTitle:'速度・信号取締カメラ',pcamTitle:'駐停車取締CCTV',rentalCta:'レンタカー予約',mktTitle:'伝統市場',ytNoKey:'設定でYouTube APIキーを入れると人気グルメ動画が表示されます',ytPopular:'人気動画',nvNoKey:'サーバー.envにNAVER_ID/NAVER_SECRETを入れると表示',nvTitle:'ブログレビューが多いグルメ',keyIssue:'発行',keyGmapNote:'(多言語地図)',keyGmapHelp:'① リンクを開く → ②「Maps JavaScript API」を有効化 → ③ 認証情報 → APIキー作成 → ④ AIza…キーを貼付',keyYtNote:'(YouTubeグルメ)',keyYtHelp:'①「YouTube Data API v3」を有効化 → ② 認証情報 → APIキー作成 → ③ 貼付',keyNaverNote:'🟢 Naverグルメはサーバー(.env)にNAVER_ID/NAVER_SECRETが必要です。',navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席確認・予約:',railOpen:'アプリがあればアプリ、なければインストール画面へ',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）'});
-Object.assign(T.zh,{prkTitle:'附近停车场',dataNoKey:'在服务器.env填入DATA_GO_KR_KEY后显示',scamTitle:'测速·闯红灯摄像头',pcamTitle:'违停抓拍CCTV',rentalCta:'租车预订',mktTitle:'传统市场',ytNoKey:'在设置中填入YouTube API密钥即可显示热门美食视频',ytPopular:'热门视频',nvNoKey:'在服务器.env填入NAVER_ID/NAVER_SECRET后显示',nvTitle:'博客评论最多的美食',keyIssue:'获取',keyGmapNote:'(多语言地图)',keyGmapHelp:'① 打开链接 → ② 启用"Maps JavaScript API" → ③ 凭据 → 创建API密钥 → ④ 粘贴AIza…密钥',keyYtNote:'(YouTube美食)',keyYtHelp:'① 启用"YouTube Data API v3" → ② 凭据 → 创建API密钥 → ③ 粘贴',keyNaverNote:'🟢 Naver美食需在服务器.env中填写NAVER_ID/NAVER_SECRET。',navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票确认·预订:',railOpen:'有App则打开App，没有则跳转安装页',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）'});
+Object.assign(T.ko,{prkTitle:'주변 주차장',dataNoKey:'서버 .env에 DATA_GO_KR_KEY(공공데이터포털 Decoding키)를 넣으면 표시됩니다',scamTitle:'과속·신호 단속카메라',pcamTitle:'주정차 단속 CCTV',rentalCta:'렌터카 예약',mktTitle:'전통시장',ytNoKey:'설정 → YouTube API 키를 넣으면 인기 맛집 영상이 표시됩니다',ytPopular:'인기 영상',nvNoKey:'서버 .env에 NAVER_ID/NAVER_SECRET을 넣으면 표시됩니다',nvTitle:'블로그 리뷰 많은 맛집',keyIssue:'발급',keyGmapNote:'(다국어 지도)',keyGmapHelp:'① 링크 열기 → ② "Maps JavaScript API" 사용 설정 → ③ 사용자 인증정보 → API 키 만들기 → ④ AIza…로 시작하는 키 복사해 붙여넣기',keyYtNote:'(유튜브 맛집)',keyYtHelp:'① 링크에서 "YouTube Data API v3" 사용 설정 → ② 사용자 인증정보 → API 키 만들기 → ③ 붙여넣기',keyNaverNote:'🟢 네이버 맛집은 보안상 서버(.env)에 NAVER_ID/NAVER_SECRET로 넣어야 합니다.',navTo:'(으)로 안내',navNeedTarget:'목적지를 검색하거나 목록에서 위치를 선택하세요',navMobile:'모바일에서 해당 앱이 열립니다',here:'현재 위치',noGeo:'위치 권한이 필요합니다',needDest:'목적지를 입력하세요',originPh:'비우면 현재 위치로 안내',leisure2:'⛳ 골프장',fishspot:'🎣 낚시터',searching:'검색 중…',searching2:'정보 불러오는 중…',prefNav:'🧭 기본 내비 앱',navDefault:'목적지',settings:'⚙️ 설정 (기능·내비·지도)',dashPick:'✅ 표시할 기능 선택',mapKeys:'🗺️ 지도 키',myTrip:'🧳 내 여행 정보',dashHint:'⚙️ 설정에서 변경',busQ:'조회',busHint:'출발·도착 터미널을 고르고 조회하세요',trainHint:'출발·도착역을 고르고 조회하세요',trainSeat:'실시간 잔여석 확인·예매',railOpen:'앱이 있으면 앱으로, 없으면 설치 화면으로 연결',emptyDash:'⚙️ 설정을 열어 원하는 기능을 켜면 여기에 표시됩니다.\\n(주유소·맛집·날씨·충전소·골프·낚시 등 30여 종)',
+loading:'불러오는 중…',fail:'실패',won:'원',minUnit:'분',needSearchDest:'먼저 출발지·목적지를 검색하세요',noGas:'주유소 없음',noResult:'결과 없음',noStay:'관광공사 등록 숙소 없음<br><span style="font-size:10px">※ 야놀자·여기어때 등 예약숙소는 별도 제휴 API 필요</span>',stayNote:'관광공사 등록 숙소만 표시(관광호텔·콘도 등)',sponBadge:'추천',feelsLike:'체감',humidity:'습도',wind:'바람',airTitle:'대기질',pm25:'초미세',pm10:'미세',noTransit:'경로 없음(도시간 이동은 미지원)',transfers:'환승',noEv:'주변 충전소 없음',noLpg:'주변 LPG 충전소 없음',noWxAlert:'현재 발효 중인 기상특보 없음 ☀️',wxAlertTitle:'발효 중인 기상특보',unitCases:'건',trafficTitle:'고속도로 실시간 통행량',unitVehicles:'대',tcsBase:'시 기준, TCS 집계',restMenuTitle:'휴게소 추천 메뉴',noNearby:'주변에 없음(반경 밖일 수 있어요)',noDestRegion:'목적지 지역을 특정할 수 없어요',noErData:'응급실 데이터 없음',erBedsTitle:'응급실 실시간 병상',erBeds:'병상',noDestSido:'목적지 시도를 특정할 수 없어요',noPharm:'주변 약국 없음(10km)',dutyTitle:'제주공항 JDC 면세점',unitStores:'개 매장',sameDepArr:'출발·도착이 같아요',noBusRoute:'해당 노선 운행 정보 없음',checkKeyQuota:'키/쿼터 확인',noVideo:'영상 없음',noFood:'맛집 없음',noSpeedcam:'주변 단속카메라 없음(20km)',searchingPrk:'주변 주차장 검색 중…',noParking:'주변 3km 내 주차장 정보가 없습니다.',navGuide:'안내',detailReserve:'상세·예약',failParking:'주차장 정보를 불러오지 못했습니다.',noParkcam:'주변 주정차단속 없음(15km)',noMarket:'전통시장 없음',loadingStations:'역 목록 불러오는 중…',failStationList:'역 목록 실패',noTrainRoute:'해당 구간 열차 없음(직통만 조회)',noTrail:'둘레길 없음',trailTitle:'두루누비 둘레길 코스',difficulty:'난이도',h2Title:'전국 수소충전소',unitPlaces:'곳',operating:'영업중',waiting:'대기',icnT1:'인천공항 T1',icnT2:'인천공항 T2',kacAll:'전국 공항(김포·제주·김해 등)',selectAirport:'공항을 선택하세요',noData:'데이터 없음',kacSoon:'한국공항공사 API 신청 예정',airportCongestion:'전국 공항 혼잡도',noAirportData:'데이터 없음(운영시간 외일 수 있음)',avgWait:'평균 대기'});
+Object.assign(T.en,{prkTitle:'Nearby parking',dataNoKey:'Add DATA_GO_KR_KEY (data.go.kr decoding key) to server .env to enable',scamTitle:'Speed/signal cameras',pcamTitle:'Parking enforcement CCTV',rentalCta:'Rent a car',mktTitle:'Traditional markets',ytNoKey:'Add a YouTube API key in Settings to see popular food videos',ytPopular:'popular',nvNoKey:'Add NAVER_ID/NAVER_SECRET to server .env to enable',nvTitle:'Most-reviewed restaurants (blogs)',keyIssue:'Get key',keyGmapNote:'(multilingual map)',keyGmapHelp:'① Open link → ② Enable "Maps JavaScript API" → ③ Credentials → Create API key → ④ Paste the AIza… key',keyYtNote:'(YouTube food)',keyYtHelp:'① Enable "YouTube Data API v3" → ② Credentials → Create API key → ③ Paste',keyNaverNote:'🟢 Naver food needs NAVER_ID/NAVER_SECRET in server .env (secret must stay server-side).',navTo:'',navNeedTarget:'Search a destination or pick a place from the list',navMobile:'Opens the app on mobile',here:'Current location',noGeo:'Location permission needed',needDest:'Enter a destination',originPh:'Empty = navigate from current location',leisure2:'⛳ Golf courses',fishspot:'🎣 Fishing spots',searching:'Searching…',searching2:'Loading info…',prefNav:'🧭 Default nav app',navDefault:'Destination',settings:'⚙️ Settings (features·nav·map)',dashPick:'✅ Choose features to show',mapKeys:'🗺️ Map keys',myTrip:'🧳 My trip info',dashHint:'⚙️ change in Settings',busQ:'Search',busHint:'Pick departure & arrival terminals, then search',trainHint:'Pick stations, then search',trainSeat:'Check live seats & book:',railOpen:'Opens the app if installed, else the install page',emptyDash:'⚙️ Open Settings and turn on the features you want — they will show up here.\\n(30+ types: gas, food, weather, EV charging, golf, fishing…)',
+loading:'Loading…',fail:'Failed',won:' KRW',minUnit:' min',needSearchDest:'Search origin & destination first',noGas:'No gas stations found',noResult:'No results',noStay:'No registered accommodations found<br><span style="font-size:10px">※ Commercial booking sites require separate partner APIs</span>',stayNote:'Showing tourism-board registered lodging only (hotels/resorts)',sponBadge:'Featured',feelsLike:'Feels like',humidity:'Humidity',wind:'Wind',airTitle:'Air quality',pm25:'PM2.5',pm10:'PM10',noTransit:'No transit route (intercity routes not supported)',transfers:'Transfers',noEv:'No EV chargers nearby',noLpg:'No LPG stations nearby',noWxAlert:'No active weather alerts ☀️',wxAlertTitle:'Active weather alerts',unitCases:' active',trafficTitle:'Live expressway traffic volume',unitVehicles:' vehicles',tcsBase:':00, TCS data',restMenuTitle:'Rest area recommended menu',noNearby:'None nearby (may be outside radius)',noDestRegion:'Could not identify destination region',noErData:'No ER bed data',erBedsTitle:'Live ER available beds',erBeds:'Beds',noDestSido:'Could not identify destination province/city',noPharm:'No pharmacies nearby (10km)',dutyTitle:'Jeju Airport JDC Duty-Free',unitStores:' stores',sameDepArr:'Origin and destination are the same',noBusRoute:'No timetable for this route',checkKeyQuota:'Check key/quota',noVideo:'No videos found',noFood:'No restaurants found',noSpeedcam:'No speed cameras nearby (20km)',searchingPrk:'Searching nearby parking…',noParking:'No parking found within 3km.',navGuide:'Navigate',detailReserve:'Details & Booking',failParking:'Failed to load parking info.',noParkcam:'No parking enforcement cameras nearby (15km)',noMarket:'No traditional markets found',loadingStations:'Loading station list…',failStationList:'Failed to load station list',noTrainRoute:'No direct trains on this route',noTrail:'No trail courses found',trailTitle:'Durunubi trail courses',difficulty:'Level: ',h2Title:'Hydrogen stations nationwide',unitPlaces:' locations',operating:'open',waiting:'Queue',icnT1:'Incheon Airport T1',icnT2:'Incheon Airport T2',kacAll:'Regional airports (Gimpo, Jeju, Gimhae, etc.)',selectAirport:'Select an airport',noData:'No data',kacSoon:'Korea Airports Corp API coming soon',airportCongestion:'Airport congestion level',noAirportData:'No data (may be outside operating hours)',avgWait:'Avg wait'});
+Object.assign(T.ja,{prkTitle:'周辺の駐車場',dataNoKey:'サーバー.envにDATA_GO_KR_KEYを入れると表示されます',scamTitle:'速度・信号取締カメラ',pcamTitle:'駐停車取締CCTV',rentalCta:'レンタカー予約',mktTitle:'伝統市場',ytNoKey:'設定でYouTube APIキーを入れると人気グルメ動画が表示されます',ytPopular:'人気動画',nvNoKey:'サーバー.envにNAVER_ID/NAVER_SECRETを入れると表示',nvTitle:'ブログレビューが多いグルメ',keyIssue:'発行',keyGmapNote:'(多言語地図)',keyGmapHelp:'① リンクを開く → ②「Maps JavaScript API」を有効化 → ③ 認証情報 → APIキー作成 → ④ AIza…キーを貼付',keyYtNote:'(YouTubeグルメ)',keyYtHelp:'①「YouTube Data API v3」を有効化 → ② 認証情報 → APIキー作成 → ③ 貼付',keyNaverNote:'🟢 Naverグルメはサーバー(.env)にNAVER_ID/NAVER_SECRETが必要です。',navTo:'へ案内',navNeedTarget:'目的地を検索するかリストから場所を選択',navMobile:'モバイルでアプリが開きます',here:'現在地',noGeo:'位置情報の許可が必要です',needDest:'目的地を入力',originPh:'空欄=現在地から案内',leisure2:'⛳ ゴルフ場',fishspot:'🎣 釣り場',searching:'検索中…',searching2:'情報を読込中…',prefNav:'🧭 既定のナビアプリ',navDefault:'目的地',settings:'⚙️ 設定（機能·ナビ·地図）',dashPick:'✅ 表示する機能を選択',mapKeys:'🗺️ 地図キー',myTrip:'🧳 旅行情報',dashHint:'⚙️ 設定で変更',busQ:'照会',busHint:'出発·到着ターミナルを選んで照会',trainHint:'出発·到着駅を選んで照会',trainSeat:'空席確認・予約:',railOpen:'アプリがあればアプリ、なければインストール画面へ',emptyDash:'⚙️ 設定を開いて使いたい機能をオンにすると、ここに表示されます。\\n（ガソリン·グルメ·天気·EV充電·ゴルフ·釣りなど30種以上）',
+loading:'読み込み中…',fail:'失敗',won:'ウォン',minUnit:'分',needSearchDest:'先に出発地・目的地を検索してください',noGas:'ガソリンスタンドなし',noResult:'結果なし',noStay:'観光公社登録の宿泊施設なし<br><span style="font-size:10px">※ 予約サイトの宿泊施設は別途提携APIが必要です</span>',stayNote:'観光公社登録の宿泊施設のみ表示（観光ホテル・コンド等）',sponBadge:'おすすめ',feelsLike:'体感',humidity:'湿度',wind:'風',airTitle:'大気質',pm25:'PM2.5',pm10:'PM10',noTransit:'経路なし（都市間移動は非対応）',transfers:'乗換',noEv:'周辺にEV充電スタンドなし',noLpg:'周辺にLPGスタンドなし',noWxAlert:'現在発効中の気象警報・注意報はありません ☀️',wxAlertTitle:'発効中の気象特報',unitCases:'件',trafficTitle:'高速道路リアルタイム交通量',unitVehicles:'台',tcsBase:'時基準、TCS集計',restMenuTitle:'SAおすすめメニュー',noNearby:'周辺になし（半径外の可能性があります）',noDestRegion:'目的地の地域を特定できません',noErData:'救急室データなし',erBedsTitle:'救急室リアルタイム病床',erBeds:'病床',noDestSido:'目的地の市・道を特定できません',noPharm:'周辺に薬局なし（10km）',dutyTitle:'済州空港JDC免税店',unitStores:'店舗',sameDepArr:'出発地と到着地が同じです',noBusRoute:'該当路線の運行情報なし',checkKeyQuota:'キー/クォータを確認',noVideo:'動画なし',noFood:'グルメ情報なし',noSpeedcam:'周辺に取締カメラなし（20km）',searchingPrk:'周辺の駐車場を検索中…',noParking:'周辺3km以内に駐車場情報がありません。',navGuide:'案内',detailReserve:'詳細・予約',failParking:'駐車場情報を取得できませんでした。',noParkcam:'周辺に駐停車取締カメラなし（15km）',noMarket:'伝統市場なし',loadingStations:'駅リストを読込中…',failStationList:'駅リストの取得に失敗',noTrainRoute:'該当区間の列車なし（直通のみ）',noTrail:'トレイルコースなし',trailTitle:'Durunubi トレイルコース',difficulty:'難易度',h2Title:'全国の水素ステーション',unitPlaces:'か所',operating:'営業中',waiting:'待機',icnT1:'仁川空港 T1',icnT2:'仁川空港 T2',kacAll:'全国の空港（金浦・済州・金海など）',selectAirport:'空港を選択してください',noData:'データなし',kacSoon:'韓国空港公社API申請予定',airportCongestion:'全国空港混雑度',noAirportData:'データなし（営業時間外の可能性あり）',avgWait:'平均待機'});
+Object.assign(T.zh,{prkTitle:'附近停车场',dataNoKey:'在服务器.env填入DATA_GO_KR_KEY后显示',scamTitle:'测速·闯红灯摄像头',pcamTitle:'违停抓拍CCTV',rentalCta:'租车预订',mktTitle:'传统市场',ytNoKey:'在设置中填入YouTube API密钥即可显示热门美食视频',ytPopular:'热门视频',nvNoKey:'在服务器.env填入NAVER_ID/NAVER_SECRET后显示',nvTitle:'博客评论最多的美食',keyIssue:'获取',keyGmapNote:'(多语言地图)',keyGmapHelp:'① 打开链接 → ② 启用"Maps JavaScript API" → ③ 凭据 → 创建API密钥 → ④ 粘贴AIza…密钥',keyYtNote:'(YouTube美食)',keyYtHelp:'① 启用"YouTube Data API v3" → ② 凭据 → 创建API密钥 → ③ 粘贴',keyNaverNote:'🟢 Naver美食需在服务器.env中填写NAVER_ID/NAVER_SECRET。',navTo:'导航',navNeedTarget:'搜索目的地或从列表选择地点',navMobile:'在手机上打开应用',here:'当前位置',noGeo:'需要位置权限',needDest:'请输入目的地',originPh:'留空=从当前位置导航',leisure2:'⛳ 高尔夫球场',fishspot:'🎣 钓鱼点',searching:'搜索中…',searching2:'加载信息中…',prefNav:'🧭 默认导航App',navDefault:'目的地',settings:'⚙️ 设置（功能·导航·地图）',dashPick:'✅ 选择要显示的功能',mapKeys:'🗺️ 地图密钥',myTrip:'🧳 我的行程信息',dashHint:'⚙️ 在设置中更改',busQ:'查询',busHint:'选择出发·到达客运站后查询',trainHint:'选择出发·到达车站后查询',trainSeat:'实时余票确认·预订:',railOpen:'有App则打开App，没有则跳转安装页',emptyDash:'⚙️ 打开设置并开启想要的功能，就会显示在这里。\\n（加油·美食·天气·电动充电·高尔夫·钓鱼等30多种）',
+loading:'加载中…',fail:'失败',won:'韩元',minUnit:'分',needSearchDest:'请先搜索出发地和目的地',noGas:'无加油站',noResult:'无结果',noStay:'无公社登记的住宿<br><span style="font-size:10px">※ 预订类住宿需单独接入合作API</span>',stayNote:'仅显示旅游发展局登记的住宿（观光酒店·度假公寓等）',sponBadge:'推荐',feelsLike:'体感',humidity:'湿度',wind:'风速',airTitle:'空气质量',pm25:'细颗粒物',pm10:'可吸入颗粒物',noTransit:'无公共交通路线（暂不支持城际移动）',transfers:'换乘',noEv:'附近无电动汽车充电站',noLpg:'附近无LPG加气站',noWxAlert:'当前无生效的气象预警 ☀️',wxAlertTitle:'生效中的气象预警',unitCases:'条',trafficTitle:'高速公路实时通行量',unitVehicles:'辆',tcsBase:'点基准，TCS统计',restMenuTitle:'服务区推荐美食',noNearby:'附近无数据（可能超出搜索范围）',noDestRegion:'无法确定目的地所在区域',noErData:'无急诊室数据',erBedsTitle:'急诊室实时空余床位',erBeds:'床位',noDestSido:'无法确定目的地所属省市',noPharm:'附近无药店（10公里内）',dutyTitle:'济州机场JDC免税店',unitStores:'家门店',sameDepArr:'出发地与目的地相同',noBusRoute:'该路线无运营信息',checkKeyQuota:'检查密钥/配额',noVideo:'无相关视频',noFood:'无美食信息',noSpeedcam:'附近无测速摄像头（20公里内）',searchingPrk:'正在搜索附近停车场…',noParking:'附近3公里内无停车场信息。',navGuide:'导航',detailReserve:'详情·预订',failParking:'无法获取停车场信息。',noParkcam:'附近无违停抓拍（15公里内）',noMarket:'无传统市场',loadingStations:'正在加载车站列表…',failStationList:'车站列表获取失败',noTrainRoute:'该区间无列车（仅查询直达）',noTrail:'无步道路线',trailTitle:'Durunubi 步道路线',difficulty:'难度',h2Title:'全国加氢站',unitPlaces:'处',operating:'营业中',waiting:'排队',icnT1:'仁川机场 T1',icnT2:'仁川机场 T2',kacAll:'全国机场（金浦·济州·金海等）',selectAirport:'请选择机场',noData:'无数据',kacSoon:'韩国机场公社API申请中',airportCongestion:'全国机场拥堵度',noAirportData:'暂无数据（可能在运营时间外）',avgWait:'平均等待'});
 let curLang=store.get('lang','ko');
 const tr=k=>(T[curLang]&&T[curLang][k])||T.ko[k]||k;
 const t=k=>tr(k);

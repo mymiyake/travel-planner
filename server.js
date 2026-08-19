@@ -348,13 +348,17 @@ const MOVE = {
   ferry:    'https://api.koreaconnect.kr/01/1/2603101713597416530PDP/SAFETY/B554035/ferry-route-info-v4/get-ferry-route-info-v4',
 };
 // 고속도로 실시간 교통량(전국 집계)
+let trafficCache = null, trafficAt = 0;
 app.get('/api/traffic', async (req, res) => {
   try {
+    if (trafficCache && Date.now() - trafficAt < 5 * 60e3) return res.json(trafficCache);
     const j = await fetchJsonRetry(`${MOVE.traffic}?type=json`);
     const rows = j?.trafficAll || [];
     const tcs = rows.filter(r => r.tcsType === '1'); // TCS 통행대수
     const total = tcs.reduce((s, r) => s + (+r.trafficAmout || 0), 0);
-    res.json({ total, sumTm: rows[0]?.sumTm, sumDate: rows[0]?.sumDate, byType: tcs.slice(0, 8).map(r => ({ car: r.carType, amount: +r.trafficAmout, span: r.tmName })) });
+    trafficCache = { total, sumTm: rows[0]?.sumTm, sumDate: rows[0]?.sumDate, byType: tcs.slice(0, 8).map(r => ({ car: r.carType, amount: +r.trafficAmout, span: r.tmName })) };
+    trafficAt = Date.now();
+    res.json(trafficCache);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // WAF 간헐 차단 대비 JSON 재시도 fetch
@@ -365,14 +369,18 @@ async function fetchJsonRetry(url, tries = 3) {
   }
 }
 // 고속도로 휴게소 추천 메뉴
+const restareaCache = {};
 app.get('/api/restarea', async (req, res) => {
   try {
     const routeNm = req.query.route || '';
+    const c = restareaCache[routeNm];
+    if (c && Date.now() - c.t < 30 * 60e3) return res.json({ count: c.list.length, list: c.list });
     const j = await fetchJsonRetry(`${MOVE.restfood}?type=json&numOfRows=40${routeNm ? `&routeNm=${encodeURIComponent(routeNm)}` : ''}`);
     const list = (j?.list || []).map(f => ({
       rest: f.stdRestNm, route: f.routeNm, addr: f.svarAddr, food: f.foodNm, cost: +f.foodCost || 0,
       desc: (f.etc || '').slice(0, 40), best: f.bestfoodyn === 'Y' || f.recommendyn === 'Y',
     }));
+    restareaCache[routeNm] = { t: Date.now(), list };
     res.json({ count: list.length, list });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

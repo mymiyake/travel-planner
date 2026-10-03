@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import express from 'express';
 import proj4 from 'proj4';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -111,7 +112,8 @@ app.get('/api/route', async (req, res) => {
     const r = await fetch(url, { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } });
     const j = await r.json();
     const route = j?.routes?.[0];
-    if (!route || route.result_code !== 0) return res.status(502).json({ error: '경로 실패', detail: route?.result_msg || j });
+    // 502를 그대로 내보내면 프록시(Cloudflare)가 HTML 오류페이지로 바꿔치기해 클라이언트 JSON 파싱이 깨진다
+    if (!route || route.result_code !== 0) return res.json({ error: '경로 실패', detail: route?.result_msg || j });
     // 경로 좌표 추출 (sections>roads>vertexes: [lng,lat,lng,lat,...])
     const path = [];
     (route.sections || []).forEach(sec => (sec.roads || []).forEach(rd => {
@@ -328,7 +330,8 @@ app.get('/api/route-multi', async (req, res) => {
       { method: 'POST', headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json();
     const route = j?.routes?.[0];
-    if (!route || route.result_code !== 0) return res.status(502).json({ error: '경로 실패', detail: route?.result_msg || j });
+    // 502를 그대로 내보내면 프록시(Cloudflare)가 HTML 오류페이지로 바꿔치기해 클라이언트 JSON 파싱이 깨진다
+    if (!route || route.result_code !== 0) return res.json({ error: '경로 실패', detail: route?.result_msg || j });
     const path = [];
     (route.sections || []).forEach(sec => (sec.roads || []).forEach(rd => {
       const v = rd.vertexes || []; for (let i = 0; i + 1 < v.length; i += 2) path.push({ lng: v[i], lat: v[i + 1] });
@@ -727,6 +730,52 @@ app.get('/api/parkcam', async (req, res) => {
 });
 
 // 키/좌표 변환 자체 점검용
+// --- 전국 PC방 (LOCALDATA 인허가 표준데이터, 로컬 JSON) ---
+// data/pcbang.json 은 scripts/build-pcbang.mjs 로 생성한다 (영업중만, WGS84 변환 완료, 최근 인허가순 정렬)
+let PCBANG = null;
+function loadPcbang() {
+  if (PCBANG !== null) return PCBANG;
+  try {
+    PCBANG = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'pcbang.json'), 'utf8'));
+    console.log(`▶ PC방 데이터 로드: ${PCBANG.list.length}곳 (기준 ${PCBANG.meta.dataDate || '?'})`);
+  } catch {
+    PCBANG = false;   // 파일 없음 → 재시도하지 않는다
+  }
+  return PCBANG;
+}
+app.get('/api/pcbang', (req, res) => {
+  const db = loadPcbang();
+  if (!db) return res.json({ error: 'NO_DATA', hint: 'node scripts/build-pcbang.mjs 를 먼저 실행하세요' });
+
+  const { lat, lng, q, region, sort, days } = req.query;
+  const radius = Math.min(+req.query.radius || 5000, 50000);
+  const limit = Math.min(+req.query.limit || 20, 100);
+
+  let list = db.list;
+  if (region) list = list.filter(p => p.a.startsWith(region));
+  if (q) { const k = String(q).trim(); if (k) list = list.filter(p => p.n.includes(k) || p.a.includes(k)); }
+  if (days) {
+    const since = new Date(Date.now() - (+days) * 86400000).toISOString().slice(0, 10);
+    list = list.filter(p => p.d >= since);
+  }
+
+  const byDist = lat && lng && sort !== 'recent';
+  if (lat && lng) {
+    const la = +lat, ln = +lng;
+    list = list.map(p => ({ ...p, dist: Math.round(haversine(la, ln, p.lat, p.lng)) })).filter(p => p.dist <= radius);
+    if (byDist) list.sort((a, b) => a.dist - b.dist);
+  }
+  // db.list 는 이미 인허가일 내림차순 → sort=recent 는 필터만 거치면 순서가 유지된다
+
+  res.json({
+    count: list.length, dataDate: db.meta.dataDate, totalOpen: db.meta.open,
+    list: list.slice(0, limit).map(p => ({
+      name: p.n, addr: p.a, tel: p.t, date: p.d, lat: p.lat, lng: p.lng,
+      area: p.ar, games: p.g, ...(p.dist !== undefined ? { dist: p.dist } : {}),
+    })),
+  });
+});
+
 app.get('/api/health', (req, res) => {
   const [x, y] = toKatec(127.0276, 37.4979); // 강남역 근처
   res.json({ ok: true, kcKeyLoaded: !!API_KEY, kakaoRestKeyLoaded: !!KAKAO_REST_KEY, sampleKatec: { x: Math.round(x), y: Math.round(y) } });

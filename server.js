@@ -45,7 +45,7 @@ app.get('/api/gas', async (req, res) => {
     const url = `${EP.gasAround}?out=json&x=${x}&y=${y}&radius=${Math.min(+radius, 5000)}&prodcd=${prodcd}&sort=${sort}`;
     const r = await fetch(url, { headers: kcHeaders() });
     const text = await r.text();
-    let j; try { j = JSON.parse(text); } catch { return res.status(502).json({ error: '오피넷 비정상 응답', raw: text.slice(0, 400) }); }
+    let j; try { j = JSON.parse(text); } catch { return res.json({ error: '오피넷 비정상 응답', raw: text.slice(0, 400) }); }
     const oil = j?.RESULT?.OIL || [];
     // KATEC 좌표를 위경도로 되돌려 지도에 표시 가능하게
     const list = oil.map(o => {
@@ -54,7 +54,7 @@ app.get('/api/gas', async (req, res) => {
       return { id: o.UNI_ID, name: o.OS_NM, brand: o.POLL_DIV_CD, price: +o.PRICE, distance: +o.DISTANCE, lat: plat, lng: plng };
     });
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 전국 평균가격 ---
@@ -63,7 +63,7 @@ app.get('/api/gas-avg', async (req, res) => {
     const r = await fetch(`${EP.gasAvg}?out=json`, { headers: kcHeaders() });
     const j = await r.json();
     res.json({ list: (j?.RESULT?.OIL || []).map(o => ({ prodcd: o.PRODCD, name: o.PRODNM, price: +o.PRICE, diff: o.DIFF })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 위치기반 관광정보 (맛집=39, 숙소=32) ---
@@ -77,14 +77,14 @@ app.get('/api/tour', async (req, res) => {
     });
     const r = await fetch(`${EP.tour}?${qs}`, { headers: kcHeaders() });
     const text = await r.text();
-    let j; try { j = JSON.parse(text); } catch { return res.status(502).json({ error: '관광공사 비정상 응답', raw: text.slice(0, 400) }); }
+    let j; try { j = JSON.parse(text); } catch { return res.json({ error: '관광공사 비정상 응답', raw: text.slice(0, 400) }); }
     let items = j?.response?.body?.items?.item || [];
     if (!Array.isArray(items)) items = items ? [items] : [];
     res.json({
       count: items.length,
       list: items.map(i => ({ name: i.title, addr: [i.addr1, i.addr2].filter(Boolean).join(' '), tel: i.tel, img: i.firstimage, lat: +i.mapy, lng: +i.mapx, id: i.contentid })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 카카오: 주소/키워드 → 좌표 ---
@@ -99,7 +99,7 @@ app.get('/api/geocode', async (req, res) => {
     const d = j?.documents?.[0];
     if (!d) return res.status(404).json({ error: '검색 결과 없음' });
     res.json({ name: d.place_name || q, addr: d.road_address_name || d.address_name, lat: +d.y, lng: +d.x });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 카카오모빌리티: 자동차 길찾기 (경로 좌표 + 요약) ---
@@ -125,7 +125,7 @@ app.get('/api/route', async (req, res) => {
       duration: route.summary.duration,   // s
       path,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // === 추가 위젯 엔드포인트 (기존 발급 API 활용) ===
@@ -154,7 +154,7 @@ app.get('/api/weather', async (req, res) => {
       desc: wr.weather?.[0]?.description, icon: wr.weather?.[0]?.icon, wind: wr.wind?.speed,
       aqi: air?.main?.aqi, aqiText: AQI_TXT[air?.main?.aqi] || '-', pm10: air?.components?.pm10, pm25: air?.components?.pm2_5,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 예보: 5일/3시간 (앞으로 8개 슬롯만) ---
@@ -167,7 +167,7 @@ app.get('/api/forecast', async (req, res) => {
       time: x.dt_txt, temp: x.main?.temp, desc: x.weather?.[0]?.description, icon: x.weather?.[0]?.icon, pop: x.pop,
     }));
     res.json({ city: j?.city?.name, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 대중교통 (ODsay): 출발→도착 추천경로 ---
@@ -184,9 +184,9 @@ app.get('/api/transit', async (req, res) => {
       walk: p.info?.totalWalk, start: p.info?.firstStartStation, end: p.info?.lastEndStation,
       distance: p.info?.totalDistance,
     }));
-    if (!paths.length) return res.status(502).json({ error: j?.result?.msgList || '대중교통 경로 없음(도시간 등)', raw: j?.error });
+    if (!paths.length) return res.json({ error: j?.result?.msgList || '대중교통 경로 없음(도시간 등)', raw: j?.error });
     res.json({ paths });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 인천공항 출국장 혼잡도 (XML → JSON) ---
@@ -203,7 +203,7 @@ app.get('/api/airport', async (req, res) => {
     const valid = items.filter(i => i.gate);
     const avg = valid.length ? Math.round(valid.reduce((s, i) => s + i.waitTime, 0) / valid.length) : 0;
     res.json({ terminal, avgWait: avg, gates: valid });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 인천공항 리무진 버스 정보 (지역별) ---
@@ -220,7 +220,7 @@ app.get('/api/airport-bus', async (req, res) => {
         firstToAirport: b.toawfirst, lastToAirport: b.toawlast,
       })),
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // --- 전국 공항 혼잡도 (한국공항공사 v1: 김포·제주 등, v2: 김해·청주·대구 등) ---
@@ -237,7 +237,7 @@ app.get('/api/airport-all', async (req, res) => {
       airports.push({ name: (IATA[code] || code) + '공항', hr: a.PRC_HR, ...kacLvl(a.CGDR_ALL_LVL) });
     });
     res.json({ airports });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ===== ⛽ 충전 배치 (전기차·수소·LPG) =====
@@ -271,7 +271,7 @@ app.get('/api/ev', async (req, res) => {
       dist: Math.round(haversine(+lat, +lng, +c.lat, +c.lng)),
     })).filter(c => c.dist <= +radius * 4).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // 수소충전소 실시간 (전국, 대기·혼잡)
 const H2CODE = { 0: '정보없음', 1: '여유', 2: '보통', 3: '혼잡' };
@@ -284,7 +284,7 @@ app.get('/api/h2', async (req, res) => {
       updated: s.last_mdfcn_dt,
     })).filter(s => s.name);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // LPG 충전소 (위치기반 최근접, 캐시)
 let lpgCache = null, lpgAt = 0;
@@ -301,7 +301,7 @@ app.get('/api/lpg', async (req, res) => {
       dist: Math.round(haversine(+lat, +lng, +s.LAT, +s.LOT)),
     })).filter(s => s.dist <= +radius * 4).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ===== 다중 목적지 최적 경로 (카카오모빌리티 경유지 + 최근접 순서 최적화) =====
@@ -341,7 +341,7 @@ app.get('/api/route-multi', async (req, res) => {
       order: order.map((o, i) => ({ seq: i + 1, name: o.name, lat: o.lat, lng: o.lng })),
       dest: { lat: dest.lat, lng: dest.lng },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ===== 🚗 이동 배치 (교통량·휴게소·여객선) =====
@@ -362,7 +362,7 @@ app.get('/api/traffic', async (req, res) => {
     trafficCache = { total, sumTm: rows[0]?.sumTm, sumDate: rows[0]?.sumDate, byType: tcs.slice(0, 8).map(r => ({ car: r.carType, amount: +r.trafficAmout, span: r.tmName })) };
     trafficAt = Date.now();
     res.json(trafficCache);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // WAF 간헐 차단 대비 JSON 재시도 fetch
 async function fetchJsonRetry(url, tries = 3) {
@@ -385,7 +385,7 @@ app.get('/api/restarea', async (req, res) => {
     }));
     restareaCache[routeNm] = { t: Date.now(), list };
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // 여객선 운항상태 (필수 파라미터 필요 — 조사 후 연결 예정)
 app.get('/api/ferry', async (req, res) => {
@@ -396,7 +396,7 @@ app.get('/api/ferry', async (req, res) => {
       return res.json({ error: j.response.header.resultMsg, list: [] });
     const items = pickItems(j);
     res.json({ count: items.length, list: items.slice(0, 20) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 기상특보 현황 (전국)
@@ -412,7 +412,7 @@ app.get('/api/wxalert', async (req, res) => {
       }
     }));
     res.json({ count: alerts.length, alerts: alerts.slice(0, 10) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ===== 🎡 볼거리 배치 (골프·낚시터·바다낚시지수·캠핑) =====
@@ -445,7 +445,7 @@ app.get('/api/golf', async (req, res) => {
     const list = golfCache.map(g => ({ ...g, dist: Math.round(haversine(+lat, +lng, g.lat, g.lng)) }))
       .filter(g => g.dist <= +radius).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 낚시터 (전국, WGS84, 최근접)
@@ -463,7 +463,7 @@ app.get('/api/fish', async (req, res) => {
     const list = fishCache.map(f => ({ ...f, dist: Math.round(haversine(+lat, +lng, f.lat, f.lng)) }))
       .filter(f => f.dist <= +radius).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // 캠핑장 (전국, 최근접)
 let campCache = null, campAt = 0;
@@ -480,7 +480,7 @@ app.get('/api/camping', async (req, res) => {
     const list = campCache.map(c => ({ ...c, dist: Math.round(haversine(+lat, +lng, c.lat, c.lng)) }))
       .filter(c => c.dist <= +radius).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ===== 🚻 편의·안전 배치 =====
@@ -498,7 +498,7 @@ app.get('/api/er', async (req, res) => {
       list.push({ name: g('dutyName'), tel: g('dutyTel3'), beds: +g('hvec') || 0, total: +g('hvs01') || null });
     }
     res.json({ count: list.length, list: list.sort((a, b) => b.beds - a.beds) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 둘레길 (두루누비 코스 — 지역명 매칭)
@@ -521,7 +521,7 @@ app.get('/api/trail', async (req, res) => {
       list = hit.length ? hit : trailCache;
     }
     res.json({ count: list.length, list: list.slice(0, 15) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 약국 (심평원, 시도코드별 페이징 + 거리순)
@@ -546,7 +546,7 @@ app.get('/api/pharm', async (req, res) => {
     const list = pharmCache[sidoCd].list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
       .filter(x => x.dist <= 10000).sort((a, b) => a.dist - b.dist).slice(0, 15);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 면세점 (제주공항 JDC 매장 목록)
@@ -560,7 +560,7 @@ app.get('/api/duty', async (req, res) => {
       dutyCache = list; dutyAt = Date.now();
     }
     res.json({ count: dutyCache.length, list: dutyCache });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 고속버스 시간표 (검증된 터미널ID 쌍, 실데이터)
@@ -578,7 +578,7 @@ app.get('/api/bus', async (req, res) => {
       charge: +x.charge || 0, grade: x.gradeNm || '',
     })).filter(x => x.dep);
     res.json({ count: list.length, date: d, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 열차 역목록 (도시코드별 병합 캐시) — 잔여석은 공공API 미제공, 시간표+요금만
@@ -597,7 +597,7 @@ app.get('/api/train-stations', async (req, res) => {
       trainStnCache = list; trainStnAt = Date.now();
     }
     res.json({ count: trainStnCache.length, list: trainStnCache });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // 열차 시간표 (출발역/도착역 nodeid + 날짜)
 app.get('/api/train', async (req, res) => {
@@ -614,7 +614,7 @@ app.get('/api/train', async (req, res) => {
       charge: +x.adultcharge || 0,
     })).filter(x => x.dep);
     res.json({ count: list.length, date: d, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 네이버 지역검색 공용 헬퍼 (mapx/mapy=WGS84*1e7)
@@ -638,7 +638,7 @@ app.get('/api/market', async (req, res) => {
     const list = (await naverLocal(`${q} 전통시장`, 'comment', 5)).filter(x => x.lat && x.lng);
     marketCache[q] = { t: Date.now(), list };
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 네이버 블로그 리뷰 많은 맛집 (지역검색 sort=comment + 블로그 total 카운트)
@@ -665,7 +665,30 @@ app.get('/api/naver-food', async (req, res) => {
     list.sort((a, b) => b.reviews - a.reviews);
     naverFoodCache[q] = { t: Date.now(), list };
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// 서버 키 설정 여부 (값은 노출하지 않음) — 프론트가 키 없는 기능을 메뉴에서 숨기는 데 사용
+app.get('/api/capabilities', (req, res) => {
+  res.json({ naver: !!(NAVER_ID && NAVER_SECRET), data: !!DATA_KEY, kakao: !!KAKAO_REST_KEY, kc: !!API_KEY });
+});
+
+// 주변 주차장 (카카오 로컬 카테고리 PK6) — 실시간 주차 API 승인 전 기본 소스
+app.get('/api/parking', async (req, res) => {
+  try {
+    if (!KAKAO_REST_KEY) return res.json({ error: 'KAKAO_REST_KEY 미설정' });
+    const { lat, lng } = req.query;
+    if (!lat || !lng) return res.status(400).json({ error: 'lat,lng 필요' });
+    const radius = Math.min(+req.query.radius || 3000, 20000);
+    const r = await fetch(`https://dapi.kakao.com/v2/local/search/category.json?category_group_code=PK6&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`,
+      { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } });
+    const j = await r.json();
+    const list = (j.documents || []).map(d => ({
+      name: d.place_name, addr: d.road_address_name || d.address_name, phone: d.phone, url: d.place_url,
+      lat: +d.y, lng: +d.x, dist: +d.distance || 0, category: d.category_name,
+    }));
+    res.json({ count: list.length, list });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 공공데이터포털 페이징 헬퍼 (표준데이터 공통 envelope)
@@ -703,7 +726,7 @@ app.get('/api/speedcam', async (req, res) => {
     if (lat && lng) list = list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
       .filter(x => x.dist <= 20000).sort((a, b) => a.dist - b.dist).slice(0, 25);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 // 전국 주정차단속 CCTV — 시도 캐시 + 거리필터
 const parkCamCache = {};
@@ -726,7 +749,7 @@ app.get('/api/parkcam', async (req, res) => {
     if (lat && lng) list = list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
       .filter(x => x.dist <= 15000).sort((a, b) => a.dist - b.dist).slice(0, 25);
     res.json({ count: list.length, list });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // 키/좌표 변환 자체 점검용

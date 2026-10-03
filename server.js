@@ -67,17 +67,30 @@ app.get('/api/gas-avg', async (req, res) => {
 });
 
 // --- 위치기반 관광정보 (맛집=39, 숙소=32) ---
+// 관광공사 언어별 서비스 + contentTypeId (외국어는 체계가 다름, 추천코스(25)는 외국어에 없음)
+const TOUR_SVC = { ko: 'KorService2', en: 'EngService2', ja: 'JpnService2', zh: 'ChsService2' };
+const TOUR_CT_FOREIGN = { 12: 76, 14: 78, 15: 85, 28: 75, 32: 80, 38: 79, 39: 82 };
+const TOUR_BASE = 'https://api.koreaconnect.kr/01/1/2603101713597416530PDP/CULTR/B551011';
 app.get('/api/tour', async (req, res) => {
   try {
-    const { lat, lng, radius = 10000, contentTypeId = 39, rows = 15 } = req.query;
+    const { lat, lng, radius = 10000, rows = 15 } = req.query;
+    let { contentTypeId = 39 } = req.query;
+    const lang = TOUR_SVC[req.query.lang] ? req.query.lang : 'ko';
     if (!lat || !lng) return res.status(400).json({ error: 'lat,lng 필요' });
+    if (lang !== 'ko') {
+      contentTypeId = TOUR_CT_FOREIGN[contentTypeId] || contentTypeId;
+      if (+req.query.contentTypeId === 25) return res.json({ count: 0, list: [] });
+    }
     const qs = new URLSearchParams({
       numOfRows: rows, pageNo: 1, MobileOS: 'ETC', MobileApp: 'coursePlanner',
       _type: 'json', arrange: 'E', mapX: lng, mapY: lat, radius, contentTypeId,
     });
-    const r = await fetch(`${EP.tour}?${qs}`, { headers: kcHeaders() });
-    const text = await r.text();
-    let j; try { j = JSON.parse(text); } catch { return res.json({ error: '관광공사 비정상 응답', raw: text.slice(0, 400) }); }
+    const url = lang === 'ko' ? EP.tour : `${TOUR_BASE}/${TOUR_SVC[lang]}/locationBasedList2`;
+    let j;
+    for (let t = 0; t < 4; t++) {
+      const text = await fetch(`${url}?${qs}`, { headers: kcHeaders() }).then(r => r.text());
+      try { j = JSON.parse(text); break; } catch { if (t === 3) return res.json({ error: '관광공사 비정상 응답', raw: text.slice(0, 200) }); await new Promise(r => setTimeout(r, 500)); }
+    }
     let items = j?.response?.body?.items?.item || [];
     if (!Array.isArray(items)) items = items ? [items] : [];
     res.json({
@@ -748,6 +761,47 @@ app.get('/api/parkcam', async (req, res) => {
     let list = parkCamCache[sido].list;
     if (lat && lng) list = list.map(x => ({ ...x, dist: Math.round(haversine(+lat, +lng, x.lat, x.lng)) }))
       .filter(x => x.dist <= 15000).sort((a, b) => a.dist - b.dist).slice(0, 25);
+    res.json({ count: list.length, list });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// 관광지 집중률 예측 (관광공사). areaCd+signguCd 필수 → 좌표를 카카오 역지오코딩해 법정동코드 앞5자리(시군구)로 조회, 시군구별 6시간 캐시
+const crowdCache = {};
+app.get('/api/crowd', async (req, res) => {
+  try {
+    if (!KAKAO_REST_KEY) return res.json({ error: 'KAKAO_REST_KEY 미설정' });
+    const { lat, lng } = req.query;
+    if (!lat || !lng) return res.status(400).json({ error: 'lat,lng 필요' });
+    const g = await fetch(`https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=${lng}&y=${lat}`, { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } }).then(r => r.json());
+    const code = (g.documents || []).find(d => d.region_type === 'B')?.code || '';
+    if (code.length < 5) return res.json({ error: '지역 확인 실패' });
+    const signguCd = code.slice(0, 5), areaCd = code.slice(0, 2);
+    let c = crowdCache[signguCd];
+    if (!c || Date.now() - c.t > 6 * 3600e3) {
+      let all = [];
+      for (let p = 1; p <= 3; p++) {
+        const j = await fetchJsonRetry(`${TOUR_BASE}/TatsCnctrRateService/tatsCnctrRatedList?MobileOS=ETC&MobileApp=routie&_type=json&numOfRows=1000&pageNo=${p}&areaCd=${areaCd}&signguCd=${signguCd}`, 6);
+        const items = pickItems(j);
+        all = all.concat(items);
+        const total = +j?.response?.body?.totalCount || 0;
+        if (all.length >= total || items.length < 1000) break;
+      }
+      c = crowdCache[signguCd] = { t: Date.now(), rows: all };
+    }
+    const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');
+    const days = Math.min(+req.query.days || 7, 30);
+    const by = {};
+    for (const r of c.rows) {
+      if (r.baseYmd < today) continue;
+      (by[r.tAtsNm] ||= { name: r.tAtsNm, sigungu: r.signguNm, series: [] }).series.push({ date: r.baseYmd, rate: +r.cnctrRate || 0 });
+    }
+    const list = Object.values(by).map(x => {
+      x.series.sort((a, b) => a.date.localeCompare(b.date));
+      x.series = x.series.slice(0, days);
+      const t0 = x.series[0];
+      const peak = x.series.reduce((m, s) => (s.rate > m.rate ? s : m), x.series[0]);
+      return { name: x.name, sigungu: x.sigungu, today: t0.rate, todayDate: t0.date, peakDate: peak.date, peakRate: peak.rate, series: x.series };
+    }).filter(x => x.series.length).sort((a, b) => b.today - a.today).slice(0, 15);
     res.json({ count: list.length, list });
   } catch (e) { res.json({ error: e.message }); }
 });

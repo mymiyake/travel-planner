@@ -686,21 +686,159 @@ app.get('/api/capabilities', (req, res) => {
   res.json({ naver: !!(NAVER_ID && NAVER_SECRET), data: !!DATA_KEY, kakao: !!KAKAO_REST_KEY, kc: !!API_KEY });
 });
 
-// 주변 주차장 (카카오 로컬 카테고리 PK6) — 실시간 주차 API 승인 전 기본 소스
+// 주변 주차장: KoreaConnect 통합주차장 기본정보(요금·운영시간) + 실시간 주차 가능 정보, 결과 없으면 카카오 로컬 PK6로 폴백
+const PARK_INFO = 'https://api.koreaconnect.kr/01/5/2606081732514722903DCP/LOGIS/api/v1/parking/info';
+const PARK_STATUS = 'https://api.koreaconnect.kr/01/7/2606081732514722903DCP/LOGIS/api/v1/parking/status';
+const parkInfoCache = {};
+async function parkInfoBySigungu(signguCd) {
+  const c = parkInfoCache[signguCd];
+  if (c && Date.now() - c.t < 24 * 3600e3) return c.rows;
+  let rows = [];
+  for (let p = 1; p <= 5; p++) {
+    const j = await fetchJsonRetry(`${PARK_INFO}?addr_cd=${signguCd}&addr_type=SIGUNGU&page_no=${p}&page_size=1000`);
+    const data = j?.data || [];
+    rows = rows.concat(data);
+    if (rows.length >= (+j?.totalCount || 0) || data.length < 1000) break;
+  }
+  parkInfoCache[signguCd] = { t: Date.now(), rows };
+  return rows;
+}
+async function parkLive(code) {
+  try {
+    const j = await fetchJsonRetry(`${PARK_STATUS}?std_prl_cd=${code}`, 1);
+    const s = j?.data?.[0];
+    // 환경공단 출처는 전기차 충전면 점유라 주차장 전체 현황이 아님, 하루 넘게 안 바뀐 값은 신뢰하지 않음
+    if (!s || !s.sum_park_cnt || /환경공단/.test(s.souc_nm || '')) return null;
+    if (Date.now() + 9 * 3600e3 - Date.parse(String(s.updt_dt).replace(' ', 'T') + 'Z') > 24 * 3600e3) return null;
+    return { total: s.sum_park_cnt, avail: Math.max(0, s.sum_park_cnt - (s.sum_curr_use_park_cnt || 0)), at: s.updt_dt };
+  } catch { return null; }
+}
+const hhmm = v => { v = String(v ?? '').trim(); if (!v) return ''; v = v.padStart(4, '0'); return `${v.slice(0, 2)}:${v.slice(2)}`; };
+function parkHours(x) {
+  const dow = new Date(Date.now() + 9 * 3600e3).getUTCDay();
+  const [b, e] = dow === 0 || dow === 6 ? [x.wkd_opr_bgng_tme, x.wkd_opr_end_tme] : [x.wkdy_opr_bgng_tme, x.wkdy_opr_end_tme];
+  if (!hhmm(b) || !hhmm(e)) return '';
+  return (+b === 0 && +e === 2400) ? '24h' : `${hhmm(b)}~${hhmm(e)}`;
+}
+function parkFee(x) {
+  if (x.pchrg_free_nm === '무료') return { free: true };
+  if (!x.bsc_park_amt) return {};
+  return { base: x.bsc_park_amt, baseMin: x.bsc_park_tme || 0, add: x.add_unit_amt || 0, addMin: x.add_unit_tme || 0, dayMax: x.day_max_amt || 0 };
+}
+async function kakaoParking(lat, lng, radius) {
+  if (!KAKAO_REST_KEY) return [];
+  const r = await fetch(`https://dapi.kakao.com/v2/local/search/category.json?category_group_code=PK6&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`,
+    { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } });
+  const j = await r.json();
+  return (j.documents || []).map(d => ({
+    name: d.place_name, addr: d.road_address_name || d.address_name, phone: d.phone, url: d.place_url,
+    lat: +d.y, lng: +d.x, dist: +d.distance || 0, category: d.category_name,
+  }));
+}
 app.get('/api/parking', async (req, res) => {
   try {
-    if (!KAKAO_REST_KEY) return res.json({ error: 'KAKAO_REST_KEY 미설정' });
     const { lat, lng } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat,lng 필요' });
     const radius = Math.min(+req.query.radius || 3000, 20000);
-    const r = await fetch(`https://dapi.kakao.com/v2/local/search/category.json?category_group_code=PK6&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`,
-      { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } });
-    const j = await r.json();
-    const list = (j.documents || []).map(d => ({
-      name: d.place_name, addr: d.road_address_name || d.address_name, phone: d.phone, url: d.place_url,
-      lat: +d.y, lng: +d.x, dist: +d.distance || 0, category: d.category_name,
-    }));
+    let list = [];
+    if (API_KEY && KAKAO_REST_KEY) {
+      // 반경이 시군구 경계를 넘을 수 있어 중심+동서남북 4점의 시군구를 모두 조회
+      const dLat = Math.min(radius, 3000) / 111000, dLng = dLat / Math.cos(lat * Math.PI / 180);
+      const pts = [[+lat, +lng], [+lat + dLat, +lng], [+lat - dLat, +lng], [+lat, +lng + dLng], [+lat, +lng - dLng]];
+      const codes = await Promise.all(pts.map(([a, b]) => fetch(`https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=${b}&y=${a}`, { headers: { Authorization: `KakaoAK ${KAKAO_REST_KEY}` } })
+        .then(r => r.json()).then(g => (g.documents || []).find(d => d.region_type === 'B')?.code || '').catch(() => '')));
+      const sgg = [...new Set(codes.filter(c => c.length >= 5).map(c => c.slice(0, 5)))];
+      if (sgg.length) {
+        const rows = (await Promise.all(sgg.map(parkInfoBySigungu))).flat();
+        list = rows.filter(x => x.la_val && x.lo_val)
+          .map(x => ({ x, dist: Math.round(haversine(+lat, +lng, x.la_val, x.lo_val)) }))
+          .filter(o => o.dist <= radius).sort((a, b) => a.dist - b.dist).slice(0, 15)
+          .map(({ x, dist }) => ({
+            code: x.std_prl_cd, name: x.prl_nm, addr: x.prl_road_addr_nm || x.prl_jino_addr_nm, phone: x.telno,
+            lat: x.la_val, lng: x.lo_val, dist, kind: [x.prl_div_nm, x.prl_kind_nm].filter(Boolean).join('·'),
+            total: x.sum_park_cnt || 0, hours: parkHours(x), fee: parkFee(x), hasLive: x.park_crst_info_prvd_yn === 'Y',
+          }));
+        await Promise.all(list.filter(p => p.hasLive).map(async p => { p.live = await parkLive(p.code); }));
+      }
+    }
+    if (list.length) return res.json({ source: 'kc', count: list.length, list });
+    const kl = await kakaoParking(lat, lng, radius);
+    if (!kl.length && !KAKAO_REST_KEY) return res.json({ error: 'KAKAO_REST_KEY 미설정' });
+    res.json({ source: 'kakao', count: kl.length, list: kl });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// 등산: 산림청 등산로 위치(전국 432곳, 좌표=GRS80 중부원점 TM) + 100대명산 상세·추천코스
+const FOREST_BASE = 'https://api.koreaconnect.kr/01/1/2603101713597416530PDP';
+const MT_SPATIAL = `${FOREST_BASE}/ENVIRO/1400000/trailInfoService/getforestspatialdataservice`;
+const MT_STORY = `${FOREST_BASE}/ENVIRO/1400000/trailInfoService/getforeststoryservice`;
+const MT_TOP100 = `${FOREST_BASE}/CULTR/1400000/cultureInfoService/gdTrailInfoOpenAPI`;
+const TM5181 = '+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +units=m +no_defs';
+const xmlTag = (s, tag) => {
+  const v = (s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)) || [])[1] || '';
+  // 원문이 이중 인코딩(&amp;lt;BR&amp;gt;)인 경우가 있어 &amp; → 나머지 순으로 두 번 푼다
+  const dec = t => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ');
+  return dec(dec(v)).replace(/<br\s*\/?>/gi, '\n').replace(/<\/?[a-zA-Z][^>]*>/g, '').replace(/\n\s*\n+/g, '\n').trim();
+};
+const xmlItems = xml => [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => m[1]);
+async function fetchXml(url) {
+  for (let i = 0; i < 3; i++) {
+    const xml = await fetch(url, { headers: kcHeaders() }).then(r => r.text());
+    if (xml.includes('<resultCode>00</resultCode>')) return xml;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  throw new Error('산림청 API 응답 오류');
+}
+let mtSpatial = null;
+async function mountainList() {
+  if (mtSpatial && Date.now() - mtSpatial.t < 24 * 3600e3) return mtSpatial.list;
+  const xml = await fetchXml(`${MT_SPATIAL}?pageNo=1&numOfRows=1000`);
+  const list = xmlItems(xml).map(it => {
+    const url = xmlTag(it, 'mntninfourl');
+    const x = +(url.match(/longitude=(-?[\d.]+)/) || [])[1], y = +(url.match(/latitude=(-?[\d.]+)/) || [])[1];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !x || !y) return null;
+    const [lng, lat] = proj4(TM5181, WGS84, [x, y]);
+    return { name: xmlTag(it, 'mntnnm'), lat, lng, img: xmlTag(it, 'mntnimg'), file: xmlTag(it, 'mntnfile'), mapUrl: url };
+  }).filter(Boolean);
+  mtSpatial = { t: Date.now(), list };
+  return list;
+}
+app.get('/api/mountains', async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) return res.status(400).json({ error: 'lat,lng 필요' });
+    const radius = Math.min(+req.query.radius || 50000, 150000);
+    const list = (await mountainList()).map(m => ({ ...m, dist: Math.round(haversine(+lat, +lng, m.lat, m.lng)) }))
+      .filter(m => m.dist <= radius).sort((a, b) => a.dist - b.dist).slice(0, 12);
     res.json({ count: list.length, list });
+  } catch (e) { res.json({ error: e.message }); }
+});
+const mtDetailCache = {};
+app.get('/api/mountain', async (req, res) => {
+  try {
+    const name = String(req.query.name || '').replace(/\(.*\)/, '').trim();
+    if (!name) return res.status(400).json({ error: 'name 필요' });
+    if (mtDetailCache[name]) return res.json(mtDetailCache[name]);
+    const q = encodeURIComponent(name);
+    const [story, top] = await Promise.all([
+      fetchXml(`${MT_STORY}?pageNo=1&numOfRows=5&mntnNm=${q}`).catch(() => ''),
+      fetchXml(`${MT_TOP100}?pageNo=1&numOfRows=5&searchMtNm=${q}`).catch(() => ''),
+    ]);
+    const s = xmlItems(story).find(it => xmlTag(it, 'mntnnm') === name) || xmlItems(story)[0];
+    const tp = xmlItems(top).find(it => xmlTag(it, 'mntnm').replace(/\(.*\)/, '') === name);
+    const out = {
+      name,
+      height: (s && xmlTag(s, 'mntninfohght')) || (tp && xmlTag(tp, 'mntheight')) || '',
+      area: (s && xmlTag(s, 'mntninfopoflc')) || (tp && xmlTag(tp, 'areanm')) || '',
+      top100: !!tp,
+      reason: (tp && xmlTag(tp, 'aeatreason')) || (s && xmlTag(s, 'hndfmsmtnslctnrson')) || '',
+      overview: (s && xmlTag(s, 'mntninfodscrt')) || (tp && xmlTag(tp, 'overview')) || '',
+      courses: (s && xmlTag(s, 'crcmrsghtnginfoetcdscrt')) || (tp && xmlTag(tp, 'etccourse')) || '',
+      transport: (s && xmlTag(s, 'pbtrninfodscrt')) || (tp && xmlTag(tp, 'transport')) || '',
+      mapImg: (s && xmlTag(s, 'hndfmsmtnmapimageseq')) || '',
+    };
+    mtDetailCache[name] = out;
+    res.json(out);
   } catch (e) { res.json({ error: e.message }); }
 });
 
